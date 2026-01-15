@@ -6,9 +6,9 @@ const KEYS = {
 
 // Model Mapping
 const MODELS = {
-  // "Qwen3 4B" -> Using Qwen 2.5 7B Instruct (Fast, Efficient)
+  // Qwen 2.5 7B Instruct (Traffic)
   TRAFFIC: "qwen/qwen-2.5-7b-instruct", 
-  // "Mistral 24B" -> Using Mistral Small 24B Instruct
+  // Mistral Small 3 24B (Noble)
   NOBLE: "mistralai/mistral-small-24b-instruct-2501" 
 };
 
@@ -31,7 +31,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { action, payload } = req.body;
+  // Ensure body is parsed
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+  }
+
+  const { action, payload } = body;
 
   try {
     let result;
@@ -67,61 +77,91 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
 
   } catch (error) {
-    console.error("OpenRouter Error:", error);
-    return res.status(500).json({ error: 'Erro ao processar solicitação', details: error.message });
+    console.error("API Error:", error);
+    // Return specific error details to help debugging
+    return res.status(500).json({ 
+        error: 'Erro no servidor', 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
 
 // --- Helper for OpenRouter API ---
 async function callOpenRouter(model, apiKey, messages, jsonMode = true) {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://bizu.app", // OpenRouter requirement
-      "X-Title": "Bizu App",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      response_format: jsonMode ? { type: "json_object" } : undefined,
-      temperature: 0.7,
-      max_tokens: 4000 // Limit to prevent huge costs/latency
-    })
-  });
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://bizu.app",
+        "X-Title": "Bizu App",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messages,
+        response_format: jsonMode ? { type: "json_object" } : undefined,
+        temperature: 0.7,
+        max_tokens: 4000
+      })
+    });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter API Error: ${response.status} - ${err}`);
-  }
-
-  const data = await response.json();
-  let content = data.choices[0].message.content;
-
-  if (jsonMode) {
-    // Clean Markdown code blocks if present
-    content = content.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
-    try {
-      return JSON.parse(content);
-    } catch (e) {
-      console.error("JSON Parse Error:", content);
-      throw new Error("Failed to parse AI response as JSON");
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenRouter API Status: ${response.status} | Body: ${errText}`);
     }
-  }
 
-  return content;
+    const data = await response.json();
+    
+    if (!data.choices || data.choices.length === 0) {
+        throw new Error("OpenRouter returned no choices.");
+    }
+
+    let content = data.choices[0].message.content;
+
+    if (jsonMode) {
+      // Robust JSON Extraction
+      // Encontra o primeiro '{' ou '[' e o último '}' ou ']'
+      const firstBrace = content.indexOf('{');
+      const firstBracket = content.indexOf('[');
+      const start = (firstBrace === -1) ? firstBracket : (firstBracket === -1) ? firstBrace : Math.min(firstBrace, firstBracket);
+      
+      const lastBrace = content.lastIndexOf('}');
+      const lastBracket = content.lastIndexOf(']');
+      const end = Math.max(lastBrace, lastBracket);
+
+      if (start !== -1 && end !== -1) {
+        content = content.substring(start, end + 1);
+      } else {
+        throw new Error("JSON structure not found in response: " + content.substring(0, 100));
+      }
+
+      try {
+        return JSON.parse(content);
+      } catch (e) {
+        console.error("JSON Parse Error. Content:", content);
+        throw new Error("Failed to parse AI response as JSON.");
+      }
+    }
+
+    return content;
+  } catch (error) {
+    console.error("CallOpenRouter Failed:", error);
+    throw error;
+  }
 }
 
 // --- Handlers ---
 
 async function handleGenerateQuiz(config) {
-  const systemPrompt = `Você é uma banca examinadora (estilo CEBRASPE/FGV). 
-  Retorne APENAS um JSON válido.
-  Estrutura: Array de objetos { id, text, options (array de 4 strings), correctAnswerIndex (0-3), explanation }.`;
+  const systemPrompt = `Você é uma banca examinadora rigorosa.
+  Retorne APENAS um JSON válido contendo um Array de objetos.
+  Não adicione markdown (code blocks).
+  Estrutura: [{ "id": "1", "text": "...", "options": ["A", "B", "C", "D"], "correctAnswerIndex": 0, "explanation": "..." }]`;
 
   const userPrompt = `Gere ${config.numberOfQuestions} questões de nível ${config.difficulty} sobre "${config.topic}".
-  Idioma: PT-BR. Foco em lei seca e jurisprudência.`;
+  Idioma: PT-BR.`;
 
   return await callOpenRouter(
     MODELS.TRAFFIC,
@@ -137,8 +177,8 @@ async function handleGenerateMaterials({ count }) {
   const topics = ["Direito Constitucional", "Administrativo", "Penal", "Raciocínio Lógico", "Informática"];
   const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
-  const systemPrompt = `Você é um curador de conteúdo para concursos. Retorne APENAS um JSON válido (Array).
-  Estrutura: [{ title, category, type (PDF/VIDEO/ARTICLE), duration, summary }].`;
+  const systemPrompt = `Você é um curador de conteúdo. Retorne APENAS um JSON válido (Array).
+  Estrutura: [{ "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }]`;
 
   const userPrompt = `Sugira ${count} materiais de estudo sobre: ${randomTopic}.`;
 
@@ -153,8 +193,8 @@ async function handleGenerateMaterials({ count }) {
 }
 
 async function handleGenerateRoutine({ targetExam, hours, subjects }) {
-  const systemPrompt = `Você é um coach de estudos. Retorne APENAS um JSON válido.
-  Estrutura: { weekSchedule: [{ day, focus, tasks: [{ subject, activity, duration }] }] }.`;
+  const systemPrompt = `Você é um coach. Retorne APENAS um JSON válido.
+  Estrutura: { "weekSchedule": [{ "day": "...", "focus": "...", "tasks": [{ "subject": "...", "activity": "...", "duration": "..." }] }] }`;
 
   const userPrompt = `Crie um ciclo semanal para "${targetExam}" com ${hours}h/dia. Matérias: ${subjects}.`;
 
@@ -169,18 +209,14 @@ async function handleGenerateRoutine({ targetExam, hours, subjects }) {
 }
 
 async function handleAskTutor({ history, message }) {
-  // Convert Gemini history format to OpenRouter format if needed
-  // Gemini: [{ role: 'user'|'model', parts: [{ text: '...' }] }]
-  // OpenRouter: [{ role: 'user'|'assistant', content: '...' }]
-  
   const formattedHistory = history.map(h => ({
     role: h.role === 'model' ? 'assistant' : 'user',
-    content: h.parts[0].text
-  }));
+    content: (h.parts && h.parts[0]) ? h.parts[0].text : ""
+  })).filter(h => h.content); // Remove mensagens vazias
 
   const systemMessage = {
     role: "system",
-    content: "Você é o 'BizuBot', o melhor professor de cursinho do Brasil. Seja direto, motivador e use gírias de concurseiro ('faca na caveira', 'papiro'). Responda em Markdown."
+    content: "Você é o 'BizuBot', o melhor professor de cursinho do Brasil. Seja direto, motivador e use gírias de concurseiro. Responda em Markdown."
   };
 
   const messages = [systemMessage, ...formattedHistory, { role: "user", content: message }];
@@ -189,16 +225,16 @@ async function handleAskTutor({ history, message }) {
     MODELS.NOBLE,
     KEYS.MISTRAL,
     messages,
-    false // Not JSON mode, chat mode
+    false
   );
 
   return { text: responseText };
 }
 
 async function handleMaterialContent({ material }) {
-  const systemPrompt = `Você é um professor de elite. Crie um conteúdo didático completo, denso e formatado em Markdown.`;
-  const userPrompt = `Crie o conteúdo para: ${material.title} (${material.category}). Tipo: ${material.type}.
-  Cite leis, dê exemplos e termine com 3 questões Certo/Errado.`;
+  const systemPrompt = `Você é um professor. Crie um conteúdo didático denso em Markdown.`;
+  const userPrompt = `Conteúdo para: ${material.title} (${material.category}). Tipo: ${material.type}.
+  Cite leis e termine com 3 questões Certo/Errado.`;
 
   const content = await callOpenRouter(
     MODELS.NOBLE,
@@ -207,7 +243,7 @@ async function handleMaterialContent({ material }) {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ],
-    false // Markdown output
+    false
   );
 
   return { content };
@@ -216,15 +252,11 @@ async function handleMaterialContent({ material }) {
 async function handleUpdateRadar() {
   const today = new Date().toLocaleDateString('pt-BR');
   
-  const systemPrompt = `Você é um especialista em concursos públicos no Brasil.
-  Retorne APENAS um JSON válido com estrutura:
-  Array de [{ id, institution, title, forecast, status, salary, board, url }].
-  Status permitidos: 'Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'.
-  
-  IMPORTANTE: Como você não tem acesso a busca em tempo real agora, use seu conhecimento mais recente para projetar oportunidades prováveis para 2025/2026 com base nos ciclos tradicionais (PF, PRF, Receita, Tribunais).
-  No campo 'url', coloque o link oficial da instituição ou 'A definir'.`;
+  const systemPrompt = `Você é um especialista em concursos.
+  Retorne APENAS um JSON válido (Array).
+  Estrutura: [{ "id": "1", "institution": "...", "title": "...", "forecast": "...", "status": "Previsto", "salary": "...", "board": "...", "url": "..." }]`;
 
-  const userPrompt = `Liste 6 grandes concursos previstos para 2025/2026. Data de referência: ${today}.`;
+  const userPrompt = `Liste 6 grandes concursos previstos para 2025/2026. Data: ${today}.`;
 
   return await callOpenRouter(
     MODELS.NOBLE,
