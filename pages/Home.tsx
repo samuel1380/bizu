@@ -5,7 +5,7 @@ import { NewsItem } from '../types';
 import { getUserStats } from '../services/db';
 import { updateContestRadar } from '../services/gemini';
 
-// Dados iniciais (placeholder) até a primeira atualização ou caso de erro
+// Dados iniciais (Cache/Placeholder) para não gastar API no load
 const INITIAL_NEWS: NewsItem[] = [
   { 
     id: '1', 
@@ -74,6 +74,7 @@ const Home: React.FC = () => {
   const [loadingStats, setLoadingStats] = useState(true);
   const [refreshingRadar, setRefreshingRadar] = useState(false);
 
+  // Load Apenas DB Stats (Sem API Call automática)
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -94,6 +95,7 @@ const Home: React.FC = () => {
     };
 
     fetchStats();
+    // NOTA: Removemos updateContestRadar() daqui para economizar API Quota
   }, []);
 
   const handleRefreshRadar = async () => {
@@ -103,7 +105,7 @@ const Home: React.FC = () => {
       setNews(updatedNews);
     } catch (error) {
       console.error("Failed to update radar", error);
-      alert("Não foi possível buscar as atualizações agora. Tente novamente em instantes.");
+      alert("A IA está ocupada no momento (Erro 429). Tente novamente em 1 minuto.");
     } finally {
       setRefreshingRadar(false);
     }
@@ -214,11 +216,11 @@ const Home: React.FC = () => {
             >
               {refreshingRadar ? (
                 <>
-                  <RefreshCw size={14} className="animate-spin" /> Atualizando...
+                  <RefreshCw size={14} className="animate-spin" /> IA Buscando...
                 </>
               ) : (
                 <>
-                  <RefreshCw size={14} /> Atualizar Agora
+                  <RefreshCw size={14} /> Atualizar
                 </>
               )}
             </button>

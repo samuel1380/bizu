@@ -1,6 +1,8 @@
 import { QuizConfig, Question, StudyMaterial, StudyRoutine, NewsItem } from '../types';
 
-// Cliente HTTP simples e direto
+// --- CONFIGURAÇÃO BÁSICA ---
+// O frontend agora apenas pede dados ao backend. Toda a inteligência está no servidor.
+
 const apiCall = async (action: string, payload: any = {}) => {
   try {
     const response = await fetch('/api/gemini', {
@@ -14,25 +16,22 @@ const apiCall = async (action: string, payload: any = {}) => {
     const data = await response.json();
 
     if (!response.ok) {
-      // Repassa a mensagem de erro vinda do servidor
-      throw new Error(data.error || `Erro no servidor: ${response.status}`);
+      throw new Error(data.error || `Erro do Servidor (${response.status})`);
     }
 
     return data;
   } catch (error: any) {
-    console.error(`Erro na ação ${action}:`, error);
-    throw error; // O componente React lidará com o erro visualmente
+    console.error(`[Frontend] Erro na ação ${action}:`, error);
+    throw error;
   }
 };
 
-// --- Funções Exportadas para o Frontend ---
+// --- FUNÇÕES EXPORTADAS (INTERFACE LIMPA) ---
 
-export const hasApiKey = (): boolean => true;
+export const hasApiKey = (): boolean => true; // O backend gerencia a chave agora
 
 export const generateQuizQuestions = async (config: QuizConfig): Promise<Question[]> => {
-  // O backend deve retornar { questions: [...] } ou o array direto
-  const result = await apiCall('generateQuiz', config);
-  return result; 
+  return await apiCall('generateQuiz', config);
 };
 
 export const askBizuTutor = async (history: {role: string, parts: {text: string}[]}[], message: string): Promise<string> => {
@@ -41,12 +40,12 @@ export const askBizuTutor = async (history: {role: string, parts: {text: string}
 };
 
 export const generateStudyMaterials = async (count: number = 3): Promise<StudyMaterial[]> => {
-  const result = await apiCall('generateMaterials', { count });
-  // Adiciona IDs temporários caso o backend não mande (segurança de frontend)
-  return result.map((m: any) => ({
+  const materials = await apiCall('generateMaterials', { count });
+  // Adiciona IDs temporários para garantir renderização correta no React
+  return materials.map((m: any) => ({
     ...m,
     id: m.id || crypto.randomUUID(),
-    updatedAt: new Date().toISOString().split('T')[0]
+    updatedAt: new Date().toISOString()
   }));
 };
 
