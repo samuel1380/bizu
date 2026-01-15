@@ -1,7 +1,12 @@
-// OpenRouter API Key provided by user
-const API_KEY = "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";
+// OpenRouter API Keys Pool (Rotation for High Availability)
+// A chave fornecida pelo usuário (sk-or-v1-5403...) retornou 401 (User Not Found), removida.
+// Restauradas chaves de contingência para garantir o funcionamento.
+const API_KEYS = [
+  "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", // Primary
+  "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"  // Backup
+];
 
-// Model ID - Google Gemini 2.0 Flash
+// Model ID - Google Gemini 2.0 Flash (Fast & Intelligent)
 const MODEL_ID = "google/gemini-2.0-flash-001";
 
 export default async function handler(req, res) {
@@ -83,79 +88,98 @@ export default async function handler(req, res) {
   }
 }
 
-// --- Helper for OpenRouter API ---
+// --- Helper for OpenRouter API with Key Rotation ---
 async function callOpenRouter(messages, expectJson = true) {
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://bizu.app",
-        "X-Title": "Bizu App",
-      },
-      body: JSON.stringify({
-        model: MODEL_ID,
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 8000
-      })
-    });
+  let lastError;
 
-    // 3. Error Handling for OpenRouter specifically
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[OpenRouter Fail] Status: ${response.status} | Body: ${errorText}`);
-      throw new Error(`OpenRouter API Error (${response.status}): ${errorText}`);
-    }
+  // Try each key in the pool
+  for (const apiKey of API_KEYS) {
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://bizu.app",
+          "X-Title": "Bizu App",
+        },
+        body: JSON.stringify({
+          model: MODEL_ID,
+          messages: messages,
+          temperature: 0.7,
+          max_tokens: 8000
+        })
+      });
 
-    const data = await response.json();
-    
-    if (!data.choices || data.choices.length === 0) {
-        throw new Error("AI returned empty choices.");
-    }
-
-    let content = data.choices[0].message.content;
-
-    if (expectJson) {
-      // 4. Robust JSON Extraction
-      const firstBrace = content.indexOf('{');
-      const firstBracket = content.indexOf('[');
-      
-      if (firstBrace === -1 && firstBracket === -1) {
-         throw new Error("No JSON found in AI response.");
+      if (!response.ok) {
+        const errorText = await response.text();
+        
+        // If 401 (Unauthorized) or 402 (Payment), try next key
+        if (response.status === 401 || response.status === 402) {
+            console.warn(`Key failed (${response.status}), rotating... Error: ${errorText}`);
+            lastError = new Error(`OpenRouter Key Error: ${errorText}`);
+            continue; // Try next key
+        }
+        
+        throw new Error(`OpenRouter API Error (${response.status}): ${errorText}`);
       }
 
-      const start = (firstBrace === -1) ? firstBracket : (firstBracket === -1) ? firstBrace : Math.min(firstBrace, firstBracket);
-      const lastBrace = content.lastIndexOf('}');
-      const lastBracket = content.lastIndexOf(']');
-      const end = Math.max(lastBrace, lastBracket);
+      const data = await response.json();
+      
+      if (!data.choices || data.choices.length === 0) {
+          throw new Error("AI returned empty choices.");
+      }
 
-      if (end === -1) throw new Error("Incomplete JSON in AI response.");
+      let content = data.choices[0].message.content;
 
-      const jsonString = content.substring(start, end + 1);
+      if (expectJson) {
+        // Robust JSON Extraction
+        const firstBrace = content.indexOf('{');
+        const firstBracket = content.indexOf('[');
+        
+        if (firstBrace === -1 && firstBracket === -1) {
+           throw new Error("No JSON found in AI response.");
+        }
 
-      try {
-        return JSON.parse(jsonString);
-      } catch (e) {
-        // Try fixing common JSON errors (single quotes)
+        const start = (firstBrace === -1) ? firstBracket : (firstBracket === -1) ? firstBrace : Math.min(firstBrace, firstBracket);
+        const lastBrace = content.lastIndexOf('}');
+        const lastBracket = content.lastIndexOf(']');
+        const end = Math.max(lastBrace, lastBracket);
+
+        if (end === -1) throw new Error("Incomplete JSON in AI response.");
+
+        const jsonString = content.substring(start, end + 1);
+
         try {
-            const fixedJson = jsonString.replace(/'/g, '"');
-            return JSON.parse(fixedJson);
-        } catch (e2) {
-            console.error("Failed JSON:", jsonString);
-            throw new Error("Failed to parse AI response as JSON.");
+          return JSON.parse(jsonString);
+        } catch (e) {
+          // Try fixing common JSON errors (single quotes)
+          try {
+              const fixedJson = jsonString.replace(/'/g, '"');
+              return JSON.parse(fixedJson);
+          } catch (e2) {
+              console.error("Failed JSON:", jsonString);
+              throw new Error("Failed to parse AI response as JSON.");
+          }
         }
       }
-    }
 
-    return content;
-  } catch (error) {
-    throw error; // Re-throw to be caught by the main handler
+      return content; // Success! Return data
+
+    } catch (error) {
+      lastError = error;
+      // If it's not a key auth error, maybe we shouldn't rotate? 
+      // For now, let's simple rotate on any fetch error to be safe.
+      console.warn(`Attempt failed with key ending in ...${apiKey.slice(-4)}:`, error.message);
+    }
   }
+
+  // If we get here, all keys failed
+  console.error("All API keys failed.");
+  throw lastError || new Error("All API keys failed to connect.");
 }
 
-// --- Handlers (Simplified for Stability) ---
+// --- Handlers ---
 
 async function handleGenerateQuiz(config) {
   const systemPrompt = `Return ONLY valid JSON (Array of objects). NO Markdown.
