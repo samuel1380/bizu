@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './index.css'; // Importação necessária para o Vite processar o arquivo
 
 // Verifica se o elemento root existe
 const rootElement = document.getElementById('root');
