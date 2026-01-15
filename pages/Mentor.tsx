@@ -118,7 +118,7 @@ const Mentor: React.FC = () => {
       {/* Header */}
       <div className="px-6 py-4 bg-white border-b-2 border-slate-200 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-           <div className="bg-blue-500 p-2.5 rounded-2xl border-b-4 border-blue-700 text-white transform hover:scale-105 transition-transform">
+           <div className="bg-blue-600 p-2.5 rounded-2xl border-b-4 border-blue-800 text-white transform hover:scale-105 transition-transform">
                <Bot size={28} strokeWidth={2.5} />
            </div>
            <div>
@@ -149,7 +149,7 @@ const Mentor: React.FC = () => {
               {/* Avatar */}
               <div className={`flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center border-2 border-b-4 ${
                 msg.role === 'user' 
-                    ? 'bg-indigo-500 text-white border-indigo-700' 
+                    ? 'bg-blue-600 text-white border-blue-800' 
                     : 'bg-white text-blue-500 border-slate-200'
               }`}>
                 {msg.role === 'user' ? <User size={20} strokeWidth={3} /> : <Bot size={24} strokeWidth={3} />}
@@ -212,7 +212,7 @@ const Mentor: React.FC = () => {
           <button
             type="submit"
             disabled={!input.trim() || loading}
-            className="flex-shrink-0 w-14 md:w-16 bg-green-500 text-white rounded-2xl border-b-4 border-green-700 hover:bg-green-400 active:border-b-0 active:translate-y-1 active:mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:mt-0 disabled:border-b-4 transition-all flex items-center justify-center"
+            className="flex-shrink-0 w-14 md:w-16 bg-blue-600 text-white rounded-2xl border-b-4 border-blue-800 hover:bg-blue-500 active:border-b-0 active:translate-y-1 active:mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:mt-0 disabled:border-b-4 transition-all flex items-center justify-center"
           >
             <Send size={24} strokeWidth={3} />
           </button>

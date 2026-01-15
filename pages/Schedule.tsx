@@ -132,7 +132,7 @@ const Schedule: React.FC = () => {
             <button 
               type="submit" 
               disabled={creating}
-              className="w-full py-4 bg-green-500 text-white rounded-2xl border-b-4 border-green-700 font-bold uppercase tracking-widest text-lg hover:bg-green-400 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-widest text-lg hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
             >
               {creating ? (
                 <>CRIANDO ROTINA <Loader2 className="animate-spin" /></>
@@ -150,7 +150,7 @@ const Schedule: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="bg-blue-500 rounded-3xl p-8 border-b-8 border-blue-700 text-white relative overflow-hidden">
+      <div className="bg-blue-600 rounded-3xl p-8 border-b-8 border-blue-800 text-white relative overflow-hidden">
         <div className="relative z-10">
             <div className="flex justify-between items-start">
                 <div>
@@ -161,7 +161,7 @@ const Schedule: React.FC = () => {
                 </div>
                 <button 
                     onClick={handleDelete}
-                    className="p-3 bg-blue-600 hover:bg-red-500 rounded-xl transition-colors text-white"
+                    className="p-3 bg-blue-700 hover:bg-red-500 rounded-xl transition-colors text-white"
                     title="Apagar Rotina"
                 >
                     <Trash2 size={24} />

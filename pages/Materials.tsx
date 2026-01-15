@@ -106,7 +106,7 @@ const Materials: React.FC = () => {
         <button 
           onClick={handleGenerateMore} 
           disabled={generating}
-          className="bg-blue-500 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-700 font-bold uppercase tracking-wider hover:bg-blue-400 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          className="bg-blue-600 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-wider hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
         >
             {generating ? (
               <>CRIANDO <Loader2 size={18} className="animate-spin" /></>
@@ -135,7 +135,7 @@ const Materials: React.FC = () => {
               onClick={() => setSelectedCategory(cat)}
               className={`px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-wide whitespace-nowrap border-b-4 transition-all active:border-b-0 active:translate-y-1 ${
                 selectedCategory === cat
-                  ? 'bg-blue-500 text-white border-blue-700'
+                  ? 'bg-blue-600 text-white border-blue-800'
                   : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -233,7 +233,7 @@ const Materials: React.FC = () => {
                    <button
                     onClick={handleGenerateContent}
                     disabled={generatingContent}
-                    className="bg-green-500 text-white px-8 py-4 rounded-2xl border-b-4 border-green-700 font-bold uppercase tracking-widest hover:bg-green-400 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-widest hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                    >
                      {generatingContent ? (
                         <>ESCREVENDO... <Loader2 className="animate-spin" /></>

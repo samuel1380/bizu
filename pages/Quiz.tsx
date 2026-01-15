@@ -87,7 +87,7 @@ const Quiz: React.FC = () => {
       <div className="max-w-2xl mx-auto py-8">
         <div className="bg-white border-2 border-slate-200 rounded-3xl p-8 shadow-sm">
           <div className="text-center mb-8">
-            <div className="inline-block p-4 bg-purple-100 text-purple-500 rounded-2xl border-2 border-purple-200 mb-4">
+            <div className="inline-block p-4 bg-blue-100 text-blue-600 rounded-2xl border-2 border-blue-200 mb-4">
               <Brain size={48} strokeWidth={2} />
             </div>
             <h2 className="text-3xl font-extrabold text-slate-700">Simulado Personalizado</h2>
@@ -143,7 +143,7 @@ const Quiz: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full bg-blue-500 text-white border-b-4 border-blue-700 rounded-2xl font-bold text-lg py-4 hover:bg-blue-400 active:border-b-0 active:translate-y-1 transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 text-white border-b-4 border-blue-800 rounded-2xl font-bold text-lg py-4 hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all uppercase tracking-widest flex items-center justify-center gap-2"
             >
               COMEÇAR <Play size={24} strokeWidth={3} className="fill-current" />
             </button>
@@ -211,7 +211,7 @@ const Quiz: React.FC = () => {
                 setShowResults(false);
                 setConfig(prev => ({ ...prev, topic: '' }));
               }}
-              className="mt-8 bg-green-500 text-white border-b-4 border-green-700 px-10 py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-green-400 active:border-b-0 active:translate-y-1 transition-all"
+              className="mt-8 bg-blue-600 text-white border-b-4 border-blue-800 px-10 py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all"
             >
               CONTINUAR
             </button>
@@ -237,7 +237,7 @@ const Quiz: React.FC = () => {
         </button>
         <div className="h-4 flex-grow bg-slate-200 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-green-500 rounded-full transition-all duration-500 ease-out"
+            className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${((currentQuestionIndex + (isChecked ? 0.5 : 0)) / questions.length) * 100}%` }}
           ></div>
         </div>
@@ -255,8 +255,8 @@ const Quiz: React.FC = () => {
             let statusStyle = "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"; // Default
             
             if (hasSelected && selectedOption === idx) {
-                // User selected this one
-                statusStyle = "bg-blue-100 border-blue-300 text-blue-500 border-b-4 border-blue-500";
+                // User selected this one (keep as Blue for selection)
+                statusStyle = "bg-blue-100 border-blue-300 text-blue-600 border-b-4 border-blue-500";
             }
             
             if (isChecked) {
@@ -321,7 +321,7 @@ const Quiz: React.FC = () => {
                         disabled={!hasSelected}
                         className={`w-full md:w-48 px-8 py-3 rounded-2xl font-bold uppercase tracking-widest border-b-4 transition-all ${
                             hasSelected 
-                            ? 'bg-green-500 text-white border-green-700 hover:bg-green-400 active:border-b-0 active:translate-y-1' 
+                            ? 'bg-blue-600 text-white border-blue-800 hover:bg-blue-500 active:border-b-0 active:translate-y-1' 
                             : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
                         }`}
                     >
@@ -332,7 +332,7 @@ const Quiz: React.FC = () => {
                         onClick={handleNext}
                         className={`w-full md:w-48 px-8 py-3 rounded-2xl font-bold uppercase tracking-widest border-b-4 transition-all active:border-b-0 active:translate-y-1 ${
                             isCorrect 
-                            ? 'bg-green-500 text-white border-green-700 hover:bg-green-400'
+                            ? 'bg-blue-600 text-white border-blue-800 hover:bg-blue-500'
                             : 'bg-red-500 text-white border-red-700 hover:bg-red-400'
                         }`}
                     >

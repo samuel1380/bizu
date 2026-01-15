@@ -41,8 +41,11 @@ export interface NewsItem {
   id: string;
   title: string;
   institution: string;
-  date: string;
-  status: 'Aberto' | 'Previsto' | 'Encerrado';
+  forecast: string; // Ex: "Março/2026"
+  status: 'Edital Publicado' | 'Banca Definida' | 'Autorizado' | 'Solicitado' | 'Previsto';
+  salary: string;
+  board: string; // Ex: "Cebraspe", "FGV"
+  url?: string; // Link para a fonte da notícia
 }
 
 // New Types for Routine

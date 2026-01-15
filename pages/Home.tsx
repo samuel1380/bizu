@@ -1,13 +1,66 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Calendar, CheckCircle, TrendingUp, Sparkles, Trophy, Flame } from 'lucide-react';
+import { ArrowRight, Calendar, CheckCircle, TrendingUp, Sparkles, Trophy, Flame, DollarSign, Briefcase, Building2, Zap, BookOpen, MessageSquareText, ChevronRight, RefreshCw, ExternalLink } from 'lucide-react';
 import { NewsItem } from '../types';
 import { getUserStats } from '../services/db';
+import { updateContestRadar } from '../services/gemini';
 
-const MOCK_NEWS: NewsItem[] = [
-  { id: '1', title: 'Edital Receita Federal', institution: 'Receita Federal', date: 'Hoje', status: 'Aberto' },
-  { id: '2', title: 'Concurso Unificado (CNU)', institution: 'Governo', date: 'Ontem', status: 'Previsto' },
-  { id: '3', title: 'Banco do Brasil', institution: 'BB', date: '2d atrás', status: 'Encerrado' },
+// Dados iniciais (placeholder) até a primeira atualização ou caso de erro
+const INITIAL_NEWS: NewsItem[] = [
+  { 
+    id: '1', 
+    title: 'Agente e Escrivão', 
+    institution: 'Polícia Federal', 
+    forecast: '2º Sem/2026', 
+    status: 'Solicitado',
+    salary: 'R$ 14.000+',
+    board: 'A definir'
+  },
+  { 
+    id: '2', 
+    title: 'Técnico e Analista', 
+    institution: 'MPU', 
+    forecast: 'Início de 2026', 
+    status: 'Previsto',
+    salary: 'Até R$ 13.000',
+    board: 'Provável Cebraspe'
+  },
+  { 
+    id: '3', 
+    title: 'Auditor Fiscal', 
+    institution: 'Receita Federal', 
+    forecast: '2026', 
+    status: 'Previsto',
+    salary: 'R$ 21.000+',
+    board: 'FGV'
+  },
+  { 
+    id: '4', 
+    title: 'Analista do Seguro Social', 
+    institution: 'INSS', 
+    forecast: '1º Sem/2026', 
+    status: 'Autorizado',
+    salary: 'R$ 9.000',
+    board: 'A definir'
+  },
+  { 
+    id: '5', 
+    title: 'Policial Rodoviário', 
+    institution: 'PRF', 
+    forecast: 'Fim de 2026', 
+    status: 'Solicitado',
+    salary: 'R$ 10.000+',
+    board: 'Cebraspe'
+  },
+  { 
+    id: '6', 
+    title: 'Técnico Bancário', 
+    institution: 'Caixa', 
+    forecast: '2026', 
+    status: 'Previsto',
+    salary: 'R$ 4.000 + PLR',
+    board: 'Cesgranrio'
+  },
 ];
 
 const Home: React.FC = () => {
@@ -17,7 +70,9 @@ const Home: React.FC = () => {
     currentStreak: 0,
     performance: 0
   });
-  const [loading, setLoading] = useState(true);
+  const [news, setNews] = useState<NewsItem[]>(INITIAL_NEWS);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [refreshingRadar, setRefreshingRadar] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -34,108 +89,188 @@ const Home: React.FC = () => {
       } catch (error) {
         console.error("Error fetching stats", error);
       } finally {
-        setLoading(false);
+        setLoadingStats(false);
       }
     };
 
     fetchStats();
   }, []);
 
+  const handleRefreshRadar = async () => {
+    setRefreshingRadar(true);
+    try {
+      const updatedNews = await updateContestRadar();
+      setNews(updatedNews);
+    } catch (error) {
+      console.error("Failed to update radar", error);
+      alert("Não foi possível buscar as atualizações agora. Tente novamente em instantes.");
+    } finally {
+      setRefreshingRadar(false);
+    }
+  };
+
+  const getStatusColor = (status: NewsItem['status']) => {
+    switch (status) {
+        case 'Edital Publicado': return 'bg-red-500 text-white border-red-700';
+        case 'Banca Definida': return 'bg-purple-500 text-white border-purple-700';
+        case 'Autorizado': return 'bg-green-500 text-white border-green-700';
+        case 'Previsto': return 'bg-yellow-400 text-yellow-900 border-yellow-600';
+        default: return 'bg-blue-500 text-white border-blue-700';
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Hero / Call to Action */}
-      <div className="flex flex-col md:flex-row gap-6 items-center bg-white border-2 border-slate-200 rounded-3xl p-8 shadow-sm">
-         <div className="flex-1 space-y-4">
-            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-700 tracking-tight">
-               Pronto para garantir sua <span className="text-green-500">aprovação?</span>
+    <div className="space-y-8 max-w-4xl mx-auto pb-12">
+      
+      {/* Header com Saudação e Stats Compactos */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+            <h1 className="text-2xl font-black text-slate-700 tracking-tight">
+                Olá, Concurseiro! 👋
             </h1>
-            <p className="text-slate-500 font-medium text-lg">
-               Faça simulados diários e mantenha sua ofensiva para subir de nível.
-            </p>
-            <div className="flex gap-4 pt-2">
-               <Link to="/quiz" className="flex-1 md:flex-none bg-green-500 text-white border-b-4 border-green-700 hover:bg-green-400 active:border-b-0 active:translate-y-1 px-8 py-3 rounded-2xl font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                  TREINAR <ArrowRight size={20} strokeWidth={3} />
-               </Link>
-               <Link to="/mentor" className="flex-1 md:flex-none bg-white text-blue-500 border-2 border-blue-200 border-b-4 hover:bg-slate-50 active:border-b-2 active:translate-y-[2px] px-8 py-3 rounded-2xl font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                  MENTOR IA
-               </Link>
+            <p className="text-slate-400 font-bold">Vamos bater a meta de hoje?</p>
+        </div>
+        
+        <div className="flex gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border-2 border-b-4 border-slate-200">
+                <Flame className="text-orange-500 fill-current" size={20} />
+                <span className="font-black text-slate-600">{stats.currentStreak}</span>
             </div>
-         </div>
-         <div className="hidden md:flex justify-center items-center w-64">
-             {/* Character Placeholder - A big trophy icon */}
-             <div className="relative">
-                <div className="absolute inset-0 bg-yellow-400 blur-2xl opacity-20 rounded-full"></div>
-                <Trophy size={140} className="text-yellow-400 drop-shadow-sm rotate-6" strokeWidth={1.5} />
-                <Sparkles size={40} className="absolute top-0 right-0 text-yellow-500 animate-bounce" />
+            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border-2 border-b-4 border-slate-200">
+                <Trophy className="text-yellow-500 fill-current" size={20} />
+                <span className="font-black text-slate-600">{stats.totalQuestions}</span>
+            </div>
+        </div>
+      </div>
+
+      {/* Hero: Card de "Próximo Passo" (Estilo Gamificado) */}
+      <div className="bg-blue-600 rounded-3xl p-1 border-b-8 border-blue-800 shadow-xl transform transition-all hover:scale-[1.01] cursor-pointer group">
+         <Link to="/quiz" className="block bg-blue-500 rounded-[20px] p-6 md:p-8 relative overflow-hidden border-2 border-blue-400/30">
+             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="text-center md:text-left space-y-2">
+                    <span className="inline-block bg-blue-700/50 text-blue-100 text-xs font-black px-3 py-1 rounded-full uppercase tracking-widest border border-blue-400/30">
+                        Desafio Diário
+                    </span>
+                    <h2 className="text-3xl md:text-4xl font-black text-white leading-tight">
+                        Treinar Conhecimentos
+                    </h2>
+                    <p className="text-blue-100 font-medium text-lg max-w-md">
+                        Complete o simulado de hoje para manter sua ofensiva e ganhar XP.
+                    </p>
+                    <div className="pt-4">
+                        <span className="inline-flex items-center gap-2 bg-white text-blue-600 px-8 py-3 rounded-xl font-black uppercase tracking-widest border-b-4 border-blue-200 group-active:border-b-0 group-active:translate-y-1 transition-all">
+                            COMEÇAR <Zap size={20} className="fill-current" />
+                        </span>
+                    </div>
+                </div>
+                
+                {/* Character / Icon */}
+                <div className="relative">
+                     <div className="absolute inset-0 bg-white blur-3xl opacity-20 rounded-full animate-pulse"></div>
+                     <Sparkles className="absolute -top-6 -right-6 text-yellow-300 animate-bounce" size={40} />
+                     <Trophy size={120} className="text-white drop-shadow-lg transform -rotate-12 group-hover:rotate-0 transition-transform duration-300" strokeWidth={1.5} />
+                </div>
              </div>
-         </div>
+         </Link>
       </div>
 
-      {/* Stats Row - Duolingo Style */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Streak */}
-        <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 flex items-center gap-4">
-           <div className="p-3 bg-orange-100 text-orange-500 rounded-xl border-2 border-orange-200">
-              <Flame size={32} strokeWidth={2.5} />
-           </div>
-           <div>
-              <p className="text-2xl font-black text-slate-700">{stats.currentStreak}</p>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dias seguidos</p>
-           </div>
-        </div>
+      {/* Grid de Ações Rápidas (Botões Quadrados Grandes) */}
+      <div className="grid grid-cols-2 gap-4">
+        <Link to="/mentor" className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 hover:bg-green-50 hover:border-green-200 hover:border-b-green-400 group transition-all active:border-b-2 active:translate-y-[6px]">
+            <div className="mb-4 bg-green-100 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-green-200 group-hover:scale-110 transition-transform">
+                <MessageSquareText size={28} className="text-green-600" strokeWidth={2.5} />
+            </div>
+            <h3 className="text-xl font-black text-slate-700 leading-tight mb-1">Mentor IA</h3>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Tirar Dúvidas</p>
+        </Link>
 
-        {/* Total XP/Questions */}
-        <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 flex items-center gap-4">
-           <div className="p-3 bg-yellow-100 text-yellow-500 rounded-xl border-2 border-yellow-200">
-              <CheckCircle size={32} strokeWidth={2.5} />
-           </div>
-           <div>
-              <p className="text-2xl font-black text-slate-700">{stats.totalQuestions}</p>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Questões</p>
-           </div>
-        </div>
-
-        {/* Accuracy */}
-        <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 flex items-center gap-4">
-           <div className="p-3 bg-blue-100 text-blue-500 rounded-xl border-2 border-blue-200">
-              <TrendingUp size={32} strokeWidth={2.5} />
-           </div>
-           <div className="w-full">
-              <div className="flex justify-between items-end">
-                <p className="text-2xl font-black text-slate-700">{stats.performance}%</p>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Precisão</p>
-              </div>
-              <div className="w-full bg-slate-200 h-3 rounded-full mt-1 overflow-hidden">
-                 <div 
-                    className="h-full bg-blue-500 rounded-full" 
-                    style={{width: `${stats.performance}%`}}
-                 ></div>
-              </div>
-           </div>
-        </div>
+        <Link to="/materials" className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 hover:bg-purple-50 hover:border-purple-200 hover:border-b-purple-400 group transition-all active:border-b-2 active:translate-y-[6px]">
+            <div className="mb-4 bg-purple-100 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-purple-200 group-hover:scale-110 transition-transform">
+                <BookOpen size={28} className="text-purple-600" strokeWidth={2.5} />
+            </div>
+            <h3 className="text-xl font-black text-slate-700 leading-tight mb-1">Materiais</h3>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Biblioteca</p>
+        </Link>
       </div>
 
-      {/* News / Updates Section */}
-      <div>
-        <h3 className="text-xl font-bold text-slate-700 mb-4 px-2">Notícias Rápidas</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {MOCK_NEWS.map((news) => (
-              <div key={news.id} className="bg-white p-5 rounded-2xl border-2 border-slate-200 hover:border-slate-300 cursor-pointer transition-all active:scale-[0.98]">
-                 <div className="flex justify-between items-start mb-2">
-                    <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wide ${
-                      news.status === 'Aberto' ? 'bg-green-100 text-green-600' :
-                      news.status === 'Previsto' ? 'bg-yellow-100 text-yellow-600' :
-                      'bg-slate-100 text-slate-500'
-                    }`}>{news.status}</span>
+      {/* Radar de Concursos (Horizontal Scroll - App Feel) */}
+      <div className="pt-4">
+        <div className="flex items-center justify-between mb-4 px-2">
+            <h3 className="text-xl font-black text-slate-700 flex items-center gap-2">
+                <Briefcase className="text-blue-500 fill-current" />
+                Radar 2026
+            </h3>
+            
+            <button 
+              onClick={handleRefreshRadar}
+              disabled={refreshingRadar}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 border-2 border-blue-100 hover:bg-blue-100 active:border-blue-200 transition-all text-xs font-bold uppercase tracking-wide disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {refreshingRadar ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" /> Atualizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={14} /> Atualizar Agora
+                </>
+              )}
+            </button>
+        </div>
+        
+        {/* Scroll Container com Snap */}
+        <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory -mx-4 px-4 scrollbar-hide">
+            {news.map((item) => (
+              <div key={item.id} className="snap-center shrink-0 w-80 bg-white p-5 rounded-3xl border-2 border-slate-200 border-b-4 hover:border-blue-300 transition-all cursor-pointer group relative">
+                 
+                 {/* Status Badge Pills */}
+                 <div className="flex justify-between items-start mb-3">
+                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-b-2 ${getStatusColor(item.status)}`}>
+                        {item.status}
+                    </span>
+                    <div className="text-xs font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                        <Building2 size={12} /> {item.board}
+                    </div>
                  </div>
-                 <h4 className="font-bold text-slate-700 leading-tight mb-3">{news.title}</h4>
-                 <div className="flex items-center text-slate-400 text-xs font-bold uppercase tracking-wider">
-                    <Calendar size={14} className="mr-1.5" /> {news.date}
+
+                 <h4 className="font-black text-lg text-slate-700 leading-tight mb-1">
+                    {item.institution}
+                 </h4>
+                 <p className="text-sm font-bold text-slate-400 mb-4">{item.title}</p>
+                 
+                 <div className="bg-slate-50 rounded-xl p-3 space-y-2 border border-slate-100">
+                    <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400 font-bold text-xs uppercase flex items-center gap-1">
+                            <Calendar size={14} /> Data
+                        </span>
+                        <span className="font-bold text-slate-700">{item.forecast}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400 font-bold text-xs uppercase flex items-center gap-1">
+                            <DollarSign size={14} /> Salário
+                        </span>
+                        <span className="font-black text-green-600 text-xs">
+                            {item.salary}
+                        </span>
+                    </div>
+                 </div>
+                 
+                 {/* Ícone sutil de Link se existir */}
+                 <div className="absolute top-1/2 right-4 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all">
+                     {item.url ? (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="bg-blue-100 p-2 rounded-full text-blue-600 hover:bg-blue-200">
+                          <ExternalLink size={20} />
+                        </a>
+                     ) : (
+                        <ChevronRight className="text-slate-300" />
+                     )}
                  </div>
               </div>
             ))}
         </div>
       </div>
+
     </div>
   );
 };

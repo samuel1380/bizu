@@ -28,10 +28,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 group">
-              <div className="text-green-500 transform group-hover:scale-110 transition-transform duration-200">
+              <div className="text-blue-600 transform group-hover:scale-110 transition-transform duration-200">
                 <GraduationCap size={32} strokeWidth={3} />
               </div>
-              <span className="font-extrabold text-2xl tracking-tighter text-green-500">
+              <span className="font-extrabold text-2xl tracking-tighter text-blue-600">
                 bizu
               </span>
             </Link>
@@ -44,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   to={item.path}
                   className={`flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-extrabold tracking-widest uppercase transition-all duration-200 ${
                     isActive(item.path)
-                      ? 'bg-blue-50 text-blue-500 border-2 border-blue-200'
+                      ? 'bg-blue-50 text-blue-600 border-2 border-blue-200'
                       : 'text-slate-400 hover:bg-slate-100 hover:text-slate-500 border-2 border-transparent'
                   }`}
                 >
@@ -77,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-4 py-4 rounded-2xl text-sm font-bold tracking-wider uppercase transition-all ${
                     isActive(item.path)
-                      ? 'bg-blue-100 text-blue-500 border-2 border-blue-200'
+                      ? 'bg-blue-100 text-blue-600 border-2 border-blue-200'
                       : 'text-slate-500 hover:bg-slate-100'
                   }`}
                 >

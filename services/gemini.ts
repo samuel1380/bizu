@@ -1,8 +1,8 @@
-import { QuizConfig, Question, StudyMaterial, StudyRoutine } from '../types';
+import { QuizConfig, Question, StudyMaterial, StudyRoutine, NewsItem } from '../types';
 
 // Função auxiliar para chamar a API do Vercel (/api/gemini)
 // Isso protege sua API KEY e evita erros de configuração no navegador
-const callApi = async (action: string, payload: any) => {
+const callApi = async (action: string, payload: any = {}) => {
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
@@ -68,4 +68,13 @@ export const generateStudyRoutine = async (targetExam: string, hours: number, su
     weekSchedule: result.weekSchedule,
     createdAt: new Date()
   };
+};
+
+export const updateContestRadar = async (): Promise<NewsItem[]> => {
+  // Gera IDs unicos no front caso o backend venha sem
+  const items = await callApi('updateRadar');
+  return items.map((item: any, index: number) => ({
+    ...item,
+    id: item.id || `news-${Date.now()}-${index}`
+  }));
 };
