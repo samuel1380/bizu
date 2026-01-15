@@ -20,16 +20,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const apiKey = process.env.API_KEY;
-
-  if (!apiKey) {
+  // Fix: Check process.env.API_KEY directly
+  if (!process.env.API_KEY) {
     return res.status(500).json({ error: 'Server misconfigured: Missing API Key' });
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  // Fix: Initialize with direct environment variable
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Gemini 2.0 Flash Experimental: Rápido, inteligente e com alto limite free
-  const modelName = "gemini-2.0-flash-exp"; 
+  // Fix: Update model to gemini-3-flash-preview
+  const modelName = "gemini-3-flash-preview"; 
   
   const { action, payload } = req.body;
 
