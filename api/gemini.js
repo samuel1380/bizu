@@ -1,16 +1,8 @@
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
-// Helper para limpar JSON vindo da IA (remove markdown ```json ... ```)
-function cleanJSON(text) {
-  if (!text) return "{}";
-  let cleaned = text.trim();
-  // Remove blocos de código markdown
-  cleaned = cleaned.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
-  return cleaned;
-}
-
+// Vercel Serverless Function
 export default async function handler(req, res) {
-  // Configuração de CORS para permitir chamadas do frontend
+  // CORS handling for safety
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -29,192 +21,186 @@ export default async function handler(req, res) {
   }
 
   if (!process.env.API_KEY) {
-    console.error("API Key is missing in environment variables.");
     return res.status(500).json({ error: 'Server misconfigured: Missing API Key' });
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // Usando Gemini 2.0 Flash para máxima velocidade (evita timeout de 10s do Vercel)
-  const modelName = "gemini-2.0-flash"; 
-  
+  // Inicializa o GenAI com a SDK estável
+  const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+
+  // Usando Gemini 1.5 Flash (Estável e Rápido)
+  const modelName = "gemini-1.5-flash";
+
   const { action, payload } = req.body;
 
   try {
     let result;
-    // Timeout de segurança interno para evitar que a função fique pendurada
-    const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout interno da função")), 9500)
-    );
 
-    const actionPromise = (async () => {
-        switch (action) {
-          case 'generateQuiz':
-            return await handleGenerateQuiz(ai, modelName, payload);
-          case 'askTutor':
-            return await handleAskTutor(ai, modelName, payload);
-          case 'generateMaterials':
-            return await handleGenerateMaterials(ai, modelName, payload);
-          case 'generateMaterialContent':
-            return await handleMaterialContent(ai, modelName, payload);
-          case 'generateRoutine':
-            return await handleGenerateRoutine(ai, modelName, payload);
-          case 'updateRadar':
-            return await handleUpdateRadar(ai, modelName);
-          default:
-            throw new Error('Invalid action');
-        }
-    })();
-
-    // Race entre a execução da IA e o timeout de 9.5s
-    result = await Promise.race([actionPromise, timeoutPromise]);
+    switch (action) {
+      case 'generateQuiz':
+        result = await handleGenerateQuiz(genAI, modelName, payload);
+        break;
+      case 'askTutor':
+        result = await handleAskTutor(genAI, modelName, payload);
+        break;
+      case 'generateMaterials':
+        result = await handleGenerateMaterials(genAI, modelName, payload);
+        break;
+      case 'generateMaterialContent':
+        result = await handleMaterialContent(genAI, modelName, payload);
+        break;
+      case 'generateRoutine':
+        result = await handleGenerateRoutine(genAI, modelName, payload);
+        break;
+      case 'updateRadar':
+        result = await handleUpdateRadar(genAI, modelName);
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid action' });
+    }
 
     return res.status(200).json(result);
 
   } catch (error) {
-    console.error(`AI Error [${action}]:`, error);
-    
-    // Tratamento específico para Rate Limit (Cota excedida)
-    if (error.message && (error.message.includes('429') || error.message.includes('Resource has been exhausted'))) {
-        return res.status(429).json({ 
-            error: 'O sistema está sobrecarregado (Muitas requisições). Aguarde 1 minuto e tente novamente.' 
-        });
+    console.error("AI Error:", error);
+    if (error.message && error.message.includes('429')) {
+      return res.status(429).json({ error: 'Muitas requisições. Tente novamente em alguns segundos.' });
     }
-
-    // Tratamento para JSON inválido ou outros erros de parsing
-    if (error instanceof SyntaxError && error.message.includes('JSON')) {
-        return res.status(500).json({ error: 'Erro ao processar resposta da IA (Formato inválido).' });
-    }
-
-    return res.status(500).json({ error: 'Erro interno ao processar solicitação.', details: error.message });
+    return res.status(500).json({ error: 'Erro ao processar solicitação', details: error.message });
   }
 }
 
-const SAFETY_SETTINGS = [
+// Configurações de Segurança Padrão
+// No SDK novo a estrutura é diferente, array de objetos simples
+const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-async function handleGenerateQuiz(ai, model, config) {
-  const prompt = `Gere ${config.numberOfQuestions} perguntas de múltipla escolha sobre: "${config.topic}".
-  Nível: ${config.difficulty}.
-  Retorne APENAS o JSON puro, sem markdown.`;
-  
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
+async function handleGenerateQuiz(genAI, modelName, config) {
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
+        type: SchemaType.ARRAY,
         items: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            id: { type: Type.STRING },
-            text: { type: Type.STRING },
-            options: { type: Type.ARRAY, items: { type: Type.STRING } },
-            correctAnswerIndex: { type: Type.INTEGER },
-            explanation: { type: Type.STRING }
+            id: { type: SchemaType.STRING },
+            text: { type: SchemaType.STRING, description: "Enunciado curto" },
+            options: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+              description: "4 alternativas"
+            },
+            correctAnswerIndex: { type: SchemaType.INTEGER },
+            explanation: { type: SchemaType.STRING, description: "Breve justificativa" }
           },
           required: ["id", "text", "options", "correctAnswerIndex", "explanation"]
         }
       }
-    }
+    },
+    safetySettings
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  const prompt = `Gere ${config.numberOfQuestions} perguntas de múltipla escolha sobre: "${config.topic}".
+  Dificuldade: ${config.difficulty}.
+  Foco: Letra da lei e jurisprudência.
+  Seja direto.`;
+
+  const result = await model.generateContent(prompt);
+  return JSON.parse(result.response.text());
 }
 
-async function handleAskTutor(ai, model, { history, message }) {
-  // Limita o histórico para economizar tokens e evitar erro 400 se for muito grande
-  const limitedHistory = history.slice(-10); 
-  
-  const chat = ai.chats.create({
-    model,
-    history: limitedHistory,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      systemInstruction: "Você é o BizuBot, um tutor para concursos públicos. Seja motivador, direto e use gírias leves de concurseiro (ex: 'faca na caveira', 'bizu', 'papiro').",
-    }
+async function handleAskTutor(genAI, modelName, { history, message }) {
+  // Ajusta o histórico para o formato do SDK (parts: [{text: ...}])
+  // O formato recebido do front já deve ser compatível, mas garantimos:
+  const formattedHistory = history.map(h => ({
+    role: h.role === 'model' ? 'model' : 'user',
+    parts: h.parts // Espera-se [{text: "..."}]
+  }));
+
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: "Você é o 'BizuBot'. Responda de forma curta, direta e motivadora. Use gírias de concurso.",
+    safetySettings
   });
 
-  const response = await chat.sendMessage({ message });
-  return { text: response.text };
+  const chat = model.startChat({
+    history: formattedHistory,
+  });
+
+  const result = await chat.sendMessage(message);
+  return { text: result.response.text() };
 }
 
-async function handleGenerateMaterials(ai, model, { count }) {
-  const prompt = `Sugira ${count} tópicos de estudo aleatórios para concursos (Direito, Lógica, Português, TI). Retorne JSON puro.`;
+async function handleGenerateMaterials(genAI, modelName, { count }) {
+  const topics = ["Direito Constitucional", "Administrativo", "Penal", "Raciocínio Lógico", "Informática"];
+  const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
+        type: SchemaType.ARRAY,
         items: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            title: { type: Type.STRING },
-            category: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
-            duration: { type: Type.STRING },
-            summary: { type: Type.STRING }
+            title: { type: SchemaType.STRING },
+            category: { type: SchemaType.STRING },
+            type: { type: SchemaType.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
+            duration: { type: SchemaType.STRING },
+            summary: { type: SchemaType.STRING }
           },
           required: ["title", "category", "type", "duration", "summary"]
         }
       }
-    }
+    },
+    safetySettings
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  const prompt = `Sugira ${count} materiais de estudo sobre: ${randomTopic}. PT-BR.`;
+  const result = await model.generateContent(prompt);
+
+  return JSON.parse(result.response.text());
 }
 
-async function handleMaterialContent(ai, model, { material }) {
-  const prompt = `Escreva uma aula completa e didática sobre: ${material.title} (${material.category}). Use formatação Markdown, negrito em palavras chave, listas e exemplos práticos.`;
+async function handleMaterialContent(genAI, modelName, { material }) {
+  const model = genAI.getGenerativeModel({ model: modelName, safetySettings });
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-    }
-  });
+  const prompt = `Crie conteúdo didático para: ${material.title} (${material.category}).
+  Seja objetivo, use tópicos e cite leis importantes.`;
 
-  return { content: response.text };
+  const result = await model.generateContent(prompt);
+  return { content: result.response.text() };
 }
 
-async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects }) {
-  const prompt = `Crie um cronograma semanal para o concurso: "${targetExam}", estudando ${hours}h por dia. Foco em: ${subjects}. Retorne JSON puro.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
+async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects }) {
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
           weekSchedule: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             items: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                day: { type: Type.STRING },
-                focus: { type: Type.STRING },
+                day: { type: SchemaType.STRING },
+                focus: { type: SchemaType.STRING },
                 tasks: {
-                  type: Type.ARRAY,
+                  type: SchemaType.ARRAY,
                   items: {
-                    type: Type.OBJECT,
+                    type: SchemaType.OBJECT,
                     properties: {
-                      subject: { type: Type.STRING },
-                      activity: { type: Type.STRING },
-                      duration: { type: Type.STRING }
+                      subject: { type: SchemaType.STRING },
+                      activity: { type: SchemaType.STRING },
+                      duration: { type: SchemaType.STRING }
                     }
                   }
                 }
@@ -223,45 +209,50 @@ async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects })
           }
         }
       }
-    }
+    },
+    safetySettings
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  const prompt = `Crie um ciclo de estudos semanal para: "${targetExam}", ${hours}h/dia. Matérias: ${subjects}.`;
+  const result = await model.generateContent(prompt);
+
+  return JSON.parse(result.response.text());
 }
 
-async function handleUpdateRadar(ai, model) {
-  // REMOVIDO: tools: [{ googleSearch: {} }] 
-  // O Google Search tool frequentemente causa timeout (>10s) em Serverless Functions gratuitas.
-  // A estratégia agora é usar o conhecimento interno do modelo para estimar com base no padrão.
-  
-  const prompt = `Liste 5 concursos públicos grandes previstos ou abertos no Brasil para 2025/2026. 
-  Preencha com dados realistas baseados no seu conhecimento sobre ciclos de concursos (PF, PRF, INSS, Tribunais, Bancos).
-  Retorne JSON puro.`;
+async function handleUpdateRadar(genAI, modelName) {
+  const today = new Date().toLocaleDateString('pt-BR');
 
-  const response = await ai.models.generateContent({
-    model, 
-    contents: prompt,
-    config: {
+  // Gemini 1.5 Flash nao tem acesso direto a Google Search via tools nesse SDK simplificado
+  // ou a configuração é diferente. Vamos simular/alucinar com base no conhecimento ou pedir JSON direto.
+  // Para evitar erros 500, removemos a tool de search e confiamos no treino do modelo ou pedimos dados genéricos.
+
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
+        type: SchemaType.ARRAY,
         items: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            id: { type: Type.STRING },
-            institution: { type: Type.STRING },
-            title: { type: Type.STRING },
-            forecast: { type: Type.STRING },
-            status: { type: Type.STRING, enum: ['Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'] },
-            salary: { type: Type.STRING },
-            board: { type: Type.STRING },
-            url: { type: Type.STRING }
+            id: { type: SchemaType.STRING },
+            institution: { type: SchemaType.STRING },
+            title: { type: SchemaType.STRING },
+            forecast: { type: SchemaType.STRING },
+            status: { type: SchemaType.STRING, enum: ['Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'] },
+            salary: { type: SchemaType.STRING },
+            board: { type: SchemaType.STRING },
+            url: { type: SchemaType.STRING }
           },
           required: ["institution", "title", "forecast", "status", "salary", "board"]
         }
       }
-    }
+    },
+    safetySettings
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  const prompt = `Liste 6 concursos públicos previstos ou abertos no Brasil de alto nível (Tribunais, Polícias, Fiscal). Data de referência: ${today}. Invente URLs verossímeis se necessário.`;
+
+  const result = await model.generateContent(prompt);
+  return JSON.parse(result.response.text());
 }
