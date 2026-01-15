@@ -10,7 +10,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     build: {
       outDir: 'dist',
-      chunkSizeWarningLimit: 1000, 
+      // Increase limit to silence warning for vendor chunks
+      chunkSizeWarningLimit: 1600, 
       rollupOptions: {
         output: {
           manualChunks: {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, GraduationCap, LayoutDashboard, MessageSquareText, Menu, X, Zap, Calendar } from 'lucide-react';
+import { BookOpen, GraduationCap, LayoutDashboard, MessageSquareText, Menu, X, Zap, Calendar, AlertTriangle } from 'lucide-react';
+import { hasApiKey } from '../services/gemini';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,6 +10,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const apiKeyConfigured = hasApiKey();
 
   const navItems = [
     { name: 'HOME', path: '/', icon: <LayoutDashboard size={20} strokeWidth={2.5} /> },
@@ -22,6 +24,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-700">
+      {/* API Key Warning Banner */}
+      {!apiKeyConfigured && (
+        <div className="bg-amber-100 border-b-2 border-amber-200 text-amber-800 px-4 py-2 text-center text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+           <AlertTriangle size={16} />
+           <span>Atenção: Chave de API não configurada. As funcionalidades de IA não funcionarão.</span>
+        </div>
+      )}
+
       {/* Chunky Navbar */}
       <nav className="sticky top-0 z-50 bg-white border-b-2 border-slate-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
