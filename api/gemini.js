@@ -1,8 +1,19 @@
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+// OpenRouter API Keys provided by user
+const KEYS = {
+  QWEN: "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",
+  MISTRAL: "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"
+};
 
-// Vercel Serverless Function
+// Model Mapping
+const MODELS = {
+  // "Qwen3 4B" -> Using Qwen 2.5 7B Instruct (Fast, Efficient)
+  TRAFFIC: "qwen/qwen-2.5-7b-instruct", 
+  // "Mistral 24B" -> Using Mistral Small 24B Instruct
+  NOBLE: "mistralai/mistral-small-24b-instruct-2501" 
+};
+
 export default async function handler(req, res) {
-  // CORS handling for safety
+  // CORS handling
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -20,37 +31,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  if (!process.env.API_KEY) {
-    return res.status(500).json({ error: 'Server misconfigured: Missing API Key' });
-  }
-
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = "gemini-3-flash-preview"; 
-  
   const { action, payload } = req.body;
 
   try {
     let result;
 
+    // Routing Logic: Traffic vs Noble
     switch (action) {
+      // --- TRAFFIC TASKS (Qwen) ---
       case 'generateQuiz':
-        result = await handleGenerateQuiz(ai, modelName, payload);
-        break;
-      case 'askTutor':
-        result = await handleAskTutor(ai, modelName, payload);
+        result = await handleGenerateQuiz(payload);
         break;
       case 'generateMaterials':
-        result = await handleGenerateMaterials(ai, modelName, payload);
-        break;
-      case 'generateMaterialContent':
-        result = await handleMaterialContent(ai, modelName, payload);
+        result = await handleGenerateMaterials(payload);
         break;
       case 'generateRoutine':
-        result = await handleGenerateRoutine(ai, modelName, payload);
+        result = await handleGenerateRoutine(payload);
+        break;
+
+      // --- NOBLE TASKS (Mistral) ---
+      case 'askTutor':
+        result = await handleAskTutor(payload);
+        break;
+      case 'generateMaterialContent':
+        result = await handleMaterialContent(payload);
         break;
       case 'updateRadar':
-        result = await handleUpdateRadar(ai, modelName);
+        result = await handleUpdateRadar();
         break;
+        
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
@@ -58,201 +67,171 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
 
   } catch (error) {
-    console.error("AI Error:", error);
-    if (error.message && error.message.includes('429')) {
-        return res.status(429).json({ error: 'Muitas pessoas usando o Bizu agora! O sistema tentará novamente...' });
-    }
+    console.error("OpenRouter Error:", error);
     return res.status(500).json({ error: 'Erro ao processar solicitação', details: error.message });
   }
 }
 
-const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
-
-async function handleGenerateQuiz(ai, model, config) {
-  const prompt = `Gere ${config.numberOfQuestions} perguntas de múltipla escolha sobre: "${config.topic}".
-  Dificuldade: ${config.difficulty}.
-  Foco: Letra da lei e jurisprudência.
-  Seja direto.`;
-  
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // DISABLE THINKING FOR SPEED
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            text: { type: Type.STRING, description: "Enunciado curto" },
-            options: { 
-              type: Type.ARRAY, 
-              items: { type: Type.STRING },
-              description: "4 alternativas" 
-            },
-            correctAnswerIndex: { type: Type.INTEGER },
-            explanation: { type: Type.STRING, description: "Breve justificativa" }
-          },
-          required: ["id", "text", "options", "correctAnswerIndex", "explanation"]
-        }
-      }
-    }
+// --- Helper for OpenRouter API ---
+async function callOpenRouter(model, apiKey, messages, jsonMode = true) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://bizu.app", // OpenRouter requirement
+      "X-Title": "Bizu App",
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      response_format: jsonMode ? { type: "json_object" } : undefined,
+      temperature: 0.7,
+      max_tokens: 4000 // Limit to prevent huge costs/latency
+    })
   });
 
-  return JSON.parse(response.text);
-}
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenRouter API Error: ${response.status} - ${err}`);
+  }
 
-async function handleAskTutor(ai, model, { history, message }) {
-  const chat = ai.chats.create({
-    model,
-    history: history,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP CHAT
-      systemInstruction: "Você é o 'BizuBot'. Responda de forma curta, direta e motivadora. Use gírias de concurso.",
+  const data = await response.json();
+  let content = data.choices[0].message.content;
+
+  if (jsonMode) {
+    // Clean Markdown code blocks if present
+    content = content.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
+    try {
+      return JSON.parse(content);
+    } catch (e) {
+      console.error("JSON Parse Error:", content);
+      throw new Error("Failed to parse AI response as JSON");
     }
-  });
+  }
 
-  const response = await chat.sendMessage({ message });
-  return { text: response.text };
+  return content;
 }
 
-async function handleGenerateMaterials(ai, model, { count }) {
+// --- Handlers ---
+
+async function handleGenerateQuiz(config) {
+  const systemPrompt = `Você é uma banca examinadora (estilo CEBRASPE/FGV). 
+  Retorne APENAS um JSON válido.
+  Estrutura: Array de objetos { id, text, options (array de 4 strings), correctAnswerIndex (0-3), explanation }.`;
+
+  const userPrompt = `Gere ${config.numberOfQuestions} questões de nível ${config.difficulty} sobre "${config.topic}".
+  Idioma: PT-BR. Foco em lei seca e jurisprudência.`;
+
+  return await callOpenRouter(
+    MODELS.TRAFFIC,
+    KEYS.QWEN,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  );
+}
+
+async function handleGenerateMaterials({ count }) {
   const topics = ["Direito Constitucional", "Administrativo", "Penal", "Raciocínio Lógico", "Informática"];
   const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
-  const prompt = `Sugira ${count} materiais de estudo sobre: ${randomTopic}. PT-BR.`;
+  const systemPrompt = `Você é um curador de conteúdo para concursos. Retorne APENAS um JSON válido (Array).
+  Estrutura: [{ title, category, type (PDF/VIDEO/ARTICLE), duration, summary }].`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP LIST GENERATION
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            category: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
-            duration: { type: Type.STRING },
-            summary: { type: Type.STRING }
-          },
-          required: ["title", "category", "type", "duration", "summary"]
-        }
-      }
-    }
-  });
+  const userPrompt = `Sugira ${count} materiais de estudo sobre: ${randomTopic}.`;
 
-  return JSON.parse(response.text);
+  return await callOpenRouter(
+    MODELS.TRAFFIC,
+    KEYS.QWEN,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  );
 }
 
-async function handleMaterialContent(ai, model, { material }) {
-  const prompt = `Crie conteúdo didático para: ${material.title} (${material.category}).
-  Seja objetivo, use tópicos e cite leis importantes.`;
+async function handleGenerateRoutine({ targetExam, hours, subjects }) {
+  const systemPrompt = `Você é um coach de estudos. Retorne APENAS um JSON válido.
+  Estrutura: { weekSchedule: [{ day, focus, tasks: [{ subject, activity, duration }] }] }.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP TEXT GENERATION
-    }
-  });
+  const userPrompt = `Crie um ciclo semanal para "${targetExam}" com ${hours}h/dia. Matérias: ${subjects}.`;
 
-  return { content: response.text };
+  return await callOpenRouter(
+    MODELS.TRAFFIC,
+    KEYS.QWEN,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  );
 }
 
-async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects }) {
-  const prompt = `Crie um ciclo de estudos semanal para: "${targetExam}", ${hours}h/dia. Matérias: ${subjects}.`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP ROUTINE
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          weekSchedule: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                day: { type: Type.STRING },
-                focus: { type: Type.STRING },
-                tasks: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      subject: { type: Type.STRING },
-                      activity: { type: Type.STRING },
-                      duration: { type: Type.STRING }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
-  return JSON.parse(response.text);
-}
-
-async function handleUpdateRadar(ai, model) {
-  const today = new Date().toLocaleDateString('pt-BR');
-  const prompt = `Pesquise "Concursos 2026 Brasil". Liste 6 oportunidades REAIS e seus links de origem (url). Data: ${today}.`;
-
-  const response = await ai.models.generateContent({
-    model, 
-    contents: prompt,
-    config: {
-      tools: [{ googleSearch: {} }],
-      // Google Search often requires thinking, so we keep it default or low, but let's try 0 for speed first.
-      // If search quality drops, we might need to remove this line, but user wants speed.
-      thinkingConfig: { thinkingBudget: 0 }, 
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            institution: { type: Type.STRING },
-            title: { type: Type.STRING },
-            forecast: { type: Type.STRING },
-            status: { type: Type.STRING, enum: ['Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'] },
-            salary: { type: Type.STRING },
-            board: { type: Type.STRING },
-            url: { type: Type.STRING }
-          },
-          required: ["institution", "title", "forecast", "status", "salary", "board"]
-        }
-      }
-    }
-  });
-
-  let jsonString = response.text;
-  if (jsonString.includes('```')) {
-    jsonString = jsonString.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
-  }
+async function handleAskTutor({ history, message }) {
+  // Convert Gemini history format to OpenRouter format if needed
+  // Gemini: [{ role: 'user'|'model', parts: [{ text: '...' }] }]
+  // OpenRouter: [{ role: 'user'|'assistant', content: '...' }]
   
-  return JSON.parse(jsonString);
+  const formattedHistory = history.map(h => ({
+    role: h.role === 'model' ? 'assistant' : 'user',
+    content: h.parts[0].text
+  }));
+
+  const systemMessage = {
+    role: "system",
+    content: "Você é o 'BizuBot', o melhor professor de cursinho do Brasil. Seja direto, motivador e use gírias de concurseiro ('faca na caveira', 'papiro'). Responda em Markdown."
+  };
+
+  const messages = [systemMessage, ...formattedHistory, { role: "user", content: message }];
+
+  const responseText = await callOpenRouter(
+    MODELS.NOBLE,
+    KEYS.MISTRAL,
+    messages,
+    false // Not JSON mode, chat mode
+  );
+
+  return { text: responseText };
+}
+
+async function handleMaterialContent({ material }) {
+  const systemPrompt = `Você é um professor de elite. Crie um conteúdo didático completo, denso e formatado em Markdown.`;
+  const userPrompt = `Crie o conteúdo para: ${material.title} (${material.category}). Tipo: ${material.type}.
+  Cite leis, dê exemplos e termine com 3 questões Certo/Errado.`;
+
+  const content = await callOpenRouter(
+    MODELS.NOBLE,
+    KEYS.MISTRAL,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    false // Markdown output
+  );
+
+  return { content };
+}
+
+async function handleUpdateRadar() {
+  const today = new Date().toLocaleDateString('pt-BR');
+  
+  const systemPrompt = `Você é um especialista em concursos públicos no Brasil.
+  Retorne APENAS um JSON válido com estrutura:
+  Array de [{ id, institution, title, forecast, status, salary, board, url }].
+  Status permitidos: 'Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'.
+  
+  IMPORTANTE: Como você não tem acesso a busca em tempo real agora, use seu conhecimento mais recente para projetar oportunidades prováveis para 2025/2026 com base nos ciclos tradicionais (PF, PRF, Receita, Tribunais).
+  No campo 'url', coloque o link oficial da instituição ou 'A definir'.`;
+
+  const userPrompt = `Liste 6 grandes concursos previstos para 2025/2026. Data de referência: ${today}.`;
+
+  return await callOpenRouter(
+    MODELS.NOBLE,
+    KEYS.MISTRAL,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  );
 }
