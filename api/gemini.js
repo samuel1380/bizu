@@ -1,10 +1,6 @@
-// OpenRouter API Keys Pool (Rotation for High Availability)
-// A chave fornecida pelo usuário (sk-or-v1-5403...) retornou 401 (User Not Found), removida.
-// Restauradas chaves de contingência para garantir o funcionamento.
-const API_KEYS = [
-  "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", // Primary
-  "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"  // Backup
-];
+// OpenRouter API Configuration
+// Prioritizing the key provided by the user to fix 401/500 errors immediately.
+const API_KEY_PRIORITY = "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";
 
 // Model ID - Google Gemini 2.0 Flash (Fast & Intelligent)
 const MODEL_ID = "google/gemini-2.0-flash-001";
@@ -29,13 +25,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Safety Check: Body existence
+    // 1. Get API Key
+    // Use the hardcoded priority key first, then fall back to env var
+    const apiKey = API_KEY_PRIORITY || process.env.OPENROUTER_API_KEY;
+
+    if (!apiKey) {
+      console.error("[API Error] No API Key found.");
+      return res.status(500).json({ 
+        error: 'Configuração de API ausente.', 
+        details: 'Nenhuma chave de API válida encontrada no servidor.' 
+      });
+    }
+
+    // 2. Safety Check: Body existence
     let body = req.body;
     if (!body) {
       return res.status(400).json({ error: 'Request body is missing or empty' });
     }
 
-    // 2. Parse Body if string (Defensive programming)
     if (typeof body === 'string') {
       try {
         body = JSON.parse(body);
@@ -50,27 +57,27 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Action is required in body' });
     }
 
-    console.log(`[API] Processing action: ${action}`);
+    console.log(`[API] Processing action: ${action} with model ${MODEL_ID}`);
 
     let result;
     switch (action) {
       case 'generateQuiz':
-        result = await handleGenerateQuiz(payload);
+        result = await handleGenerateQuiz(payload, apiKey);
         break;
       case 'generateMaterials':
-        result = await handleGenerateMaterials(payload);
+        result = await handleGenerateMaterials(payload, apiKey);
         break;
       case 'generateRoutine':
-        result = await handleGenerateRoutine(payload);
+        result = await handleGenerateRoutine(payload, apiKey);
         break;
       case 'askTutor':
-        result = await handleAskTutor(payload);
+        result = await handleAskTutor(payload, apiKey);
         break;
       case 'generateMaterialContent':
-        result = await handleMaterialContent(payload);
+        result = await handleMaterialContent(payload, apiKey);
         break;
       case 'updateRadar':
-        result = await handleUpdateRadar();
+        result = await handleUpdateRadar(apiKey);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
@@ -80,7 +87,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("[API CRITICAL ERROR]:", error);
-    // Return the actual error message to the client for debugging
     return res.status(500).json({ 
         error: error.message || 'Internal Server Error', 
         details: error.toString() 
@@ -88,100 +94,88 @@ export default async function handler(req, res) {
   }
 }
 
-// --- Helper for OpenRouter API with Key Rotation ---
-async function callOpenRouter(messages, expectJson = true) {
-  let lastError;
+// --- Helper for OpenRouter API ---
+async function callOpenRouter(messages, apiKey, expectJson = true) {
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://bizu.app",
+        "X-Title": "Bizu App",
+      },
+      body: JSON.stringify({
+        model: MODEL_ID,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 8000
+      })
+    });
 
-  // Try each key in the pool
-  for (const apiKey of API_KEYS) {
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://bizu.app",
-          "X-Title": "Bizu App",
-        },
-        body: JSON.stringify({
-          model: MODEL_ID,
-          messages: messages,
-          temperature: 0.7,
-          max_tokens: 8000
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        
-        // If 401 (Unauthorized) or 402 (Payment), try next key
-        if (response.status === 401 || response.status === 402) {
-            console.warn(`Key failed (${response.status}), rotating... Error: ${errorText}`);
-            lastError = new Error(`OpenRouter Key Error: ${errorText}`);
-            continue; // Try next key
-        }
-        
-        throw new Error(`OpenRouter API Error (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      // Captura erros específicos de autenticação
+      if (response.status === 401) {
+         console.error("[Auth Error] Chave inválida ou usuário não encontrado.");
+         throw new Error("Chave da API inválida (Erro 401). A chave hardcoded ou do .env está incorreta.");
       }
+      if (response.status === 402) {
+         throw new Error("Saldo insuficiente na API (Erro 402). Verifique seus créditos no OpenRouter.");
+      }
+      throw new Error(`OpenRouter API Error (${response.status}): ${errorText}`);
+    }
 
-      const data = await response.json();
+    const data = await response.json();
+    
+    if (!data.choices || data.choices.length === 0) {
+        throw new Error("A IA não retornou nenhuma resposta.");
+    }
+
+    let content = data.choices[0].message.content;
+
+    if (expectJson) {
+      const firstBrace = content.indexOf('{');
+      const firstBracket = content.indexOf('[');
       
-      if (!data.choices || data.choices.length === 0) {
-          throw new Error("AI returned empty choices.");
+      if (firstBrace === -1 && firstBracket === -1) {
+         throw new Error("A resposta da IA não contém JSON válido.");
       }
 
-      let content = data.choices[0].message.content;
+      const start = (firstBrace === -1) ? firstBracket : (firstBracket === -1) ? firstBrace : Math.min(firstBrace, firstBracket);
+      const lastBrace = content.lastIndexOf('}');
+      const lastBracket = content.lastIndexOf(']');
+      const end = Math.max(lastBrace, lastBracket);
 
-      if (expectJson) {
-        // Robust JSON Extraction
-        const firstBrace = content.indexOf('{');
-        const firstBracket = content.indexOf('[');
-        
-        if (firstBrace === -1 && firstBracket === -1) {
-           throw new Error("No JSON found in AI response.");
-        }
+      if (end === -1) throw new Error("JSON incompleto na resposta da IA.");
 
-        const start = (firstBrace === -1) ? firstBracket : (firstBracket === -1) ? firstBrace : Math.min(firstBrace, firstBracket);
-        const lastBrace = content.lastIndexOf('}');
-        const lastBracket = content.lastIndexOf(']');
-        const end = Math.max(lastBrace, lastBracket);
+      const jsonString = content.substring(start, end + 1);
 
-        if (end === -1) throw new Error("Incomplete JSON in AI response.");
-
-        const jsonString = content.substring(start, end + 1);
-
-        try {
-          return JSON.parse(jsonString);
-        } catch (e) {
-          // Try fixing common JSON errors (single quotes)
+      try {
+        return JSON.parse(jsonString);
+      } catch (e) {
+          // Fallback para aspas simples
           try {
               const fixedJson = jsonString.replace(/'/g, '"');
               return JSON.parse(fixedJson);
           } catch (e2) {
               console.error("Failed JSON:", jsonString);
-              throw new Error("Failed to parse AI response as JSON.");
+              throw new Error("Falha ao processar o JSON retornado pela IA.");
           }
-        }
       }
-
-      return content; // Success! Return data
-
-    } catch (error) {
-      lastError = error;
-      // If it's not a key auth error, maybe we shouldn't rotate? 
-      // For now, let's simple rotate on any fetch error to be safe.
-      console.warn(`Attempt failed with key ending in ...${apiKey.slice(-4)}:`, error.message);
     }
-  }
 
-  // If we get here, all keys failed
-  console.error("All API keys failed.");
-  throw lastError || new Error("All API keys failed to connect.");
+    return content;
+
+  } catch (error) {
+    console.error("CallOpenRouter Error:", error.message);
+    throw error;
+  }
 }
 
-// --- Handlers ---
+// --- Handlers (Receiving apiKey) ---
 
-async function handleGenerateQuiz(config) {
+async function handleGenerateQuiz(config, apiKey) {
   const systemPrompt = `Return ONLY valid JSON (Array of objects). NO Markdown.
   Structure: [{"id":"1","text":"Question?","options":["A","B","C","D"],"correctAnswerIndex":0,"explanation":"..."}]`;
   const userPrompt = `Create ${config.numberOfQuestions} questions (Difficulty: ${config.difficulty}) about "${config.topic}". Language: PT-BR.`;
@@ -189,10 +183,10 @@ async function handleGenerateQuiz(config) {
   return await callOpenRouter([
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt }
-  ], true);
+  ], apiKey, true);
 }
 
-async function handleGenerateMaterials({ count }) {
+async function handleGenerateMaterials({ count }, apiKey) {
   const topics = ["Direito Constitucional", "Administrativo", "Penal", "Raciocínio Lógico", "Informática"];
   const randomTopic = topics[Math.floor(Math.random() * topics.length)];
   const systemPrompt = `Return ONLY valid JSON (Array). NO Markdown.
@@ -202,21 +196,21 @@ async function handleGenerateMaterials({ count }) {
   return await callOpenRouter([
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt }
-  ], true);
+  ], apiKey, true);
 }
 
-async function handleGenerateRoutine({ targetExam, hours, subjects }) {
+async function handleGenerateRoutine({ targetExam, hours, subjects }, apiKey) {
   const systemPrompt = `Return ONLY valid JSON. NO Markdown.
-  Structure: {"weekSchedule":[{"day":"...","focus":"...","tasks":[{"subject":"...","activity":"...","duration":"..."}]}]}`;
+  Structure: {"weekSchedule":[{"day":"...","focus":"...","tasks":[{"subject":"...","activity":"...","duration":"..."}]}]`;
   const userPrompt = `Create a weekly schedule for "${targetExam}" (${hours}h/day). Subjects: ${subjects}. Language: PT-BR.`;
 
   return await callOpenRouter([
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt }
-  ], true);
+  ], apiKey, true);
 }
 
-async function handleAskTutor({ history, message }) {
+async function handleAskTutor({ history, message }, apiKey) {
   const formattedHistory = history.map(h => ({
     role: h.role === 'model' ? 'assistant' : 'user',
     content: (h.parts && h.parts[0]) ? h.parts[0].text : ""
@@ -229,23 +223,23 @@ async function handleAskTutor({ history, message }) {
 
   const messages = [systemMessage, ...formattedHistory, { role: "user", content: message }];
 
-  const responseText = await callOpenRouter(messages, false);
+  const responseText = await callOpenRouter(messages, apiKey, false);
   return { text: responseText };
 }
 
-async function handleMaterialContent({ material }) {
+async function handleMaterialContent({ material }, apiKey) {
   const systemPrompt = `You are a teacher. Create a full educational markdown article.`;
   const userPrompt = `Create content for: ${material.title} (${material.category}). Include introduction, main topics, and 3 True/False questions at the end. Language: PT-BR.`;
 
   const content = await callOpenRouter([
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt }
-  ], false);
+  ], apiKey, false);
 
   return { content };
 }
 
-async function handleUpdateRadar() {
+async function handleUpdateRadar(apiKey) {
   const today = new Date().toLocaleDateString('pt-BR');
   const systemPrompt = `Return ONLY valid JSON (Array). NO Markdown.
   Structure: [{"id":"1","institution":"...","title":"...","forecast":"...","status":"Previsto","salary":"...","board":"...","url":"..."}]`;
@@ -254,5 +248,5 @@ async function handleUpdateRadar() {
   return await callOpenRouter([
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt }
-  ], true);
+  ], apiKey, true);
 }
