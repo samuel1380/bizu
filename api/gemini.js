@@ -25,11 +25,11 @@ export default async function handler(req, res) {
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // MUDANÇA: Usando Gemini 2.0 Flash
-  // É o modelo mais rápido e estável atualmente para alto volume de requisições (muitos clientes)
-  const modelName = "gemini-2.0-flash"; 
-  
+
+  // MUDANÇA: Usando Gemini 1.5 Flash
+  // Versão estável com limites de requisição mais altos para evitar erro 429
+  const modelName = "gemini-1.5-flash";
+
   const { action, payload } = req.body;
 
   try {
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("AI Error:", error);
     if (error.message && error.message.includes('429')) {
-        return res.status(429).json({ error: 'Muitas pessoas usando o Bizu agora! O sistema tentará novamente...' });
+      return res.status(429).json({ error: 'Muitas pessoas usando o Bizu agora! O sistema tentará novamente...' });
     }
     return res.status(500).json({ error: 'Erro ao processar solicitação', details: error.message });
   }
@@ -81,7 +81,7 @@ async function handleGenerateQuiz(ai, model, config) {
   Dificuldade: ${config.difficulty}.
   Foco: Letra da lei e jurisprudência.
   Seja direto.`;
-  
+
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
@@ -96,10 +96,10 @@ async function handleGenerateQuiz(ai, model, config) {
           properties: {
             id: { type: Type.STRING },
             text: { type: Type.STRING, description: "Enunciado curto" },
-            options: { 
-              type: Type.ARRAY, 
+            options: {
+              type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: "4 alternativas" 
+              description: "4 alternativas"
             },
             correctAnswerIndex: { type: Type.INTEGER },
             explanation: { type: Type.STRING, description: "Breve justificativa" }
@@ -221,7 +221,7 @@ async function handleUpdateRadar(ai, model) {
   const prompt = `Pesquise "Concursos 2026 Brasil". Liste 6 oportunidades REAIS e seus links de origem (url). Data: ${today}.`;
 
   const response = await ai.models.generateContent({
-    model, 
+    model,
     contents: prompt,
     config: {
       // Gemini 2.0 Flash suporta tools, mas em ambientes serverless como Vercel
@@ -253,6 +253,6 @@ async function handleUpdateRadar(ai, model) {
   if (jsonString.includes('```')) {
     jsonString = jsonString.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
   }
-  
+
   return JSON.parse(jsonString);
 }
