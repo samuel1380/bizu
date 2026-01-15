@@ -1,11 +1,11 @@
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { QuizConfig, Question, StudyMaterial, StudyRoutine } from '../types';
 
-// Inicializa a IA diretamente no cliente para garantir funcionamento no ambiente de preview.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Obtém a chave de API injetada pelo Vite
+const API_KEY = process.env.API_KEY;
 const MODEL_NAME = "gemini-3-flash-preview";
 
-// Configurações de segurança permissivas para permitir questões de Direito Penal/Criminologia
+// Configurações de segurança
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -13,9 +13,21 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-export const hasApiKey = (): boolean => true;
+// Função Helper para inicializar a IA apenas quando necessário
+// Isso evita que o app quebre na inicialização se a chave estiver faltando
+const getAI = () => {
+  if (!API_KEY) {
+    console.error("ERRO CRÍTICO: API Key do Gemini não encontrada. Verifique as variáveis de ambiente no Vercel.");
+    throw new Error("Chave de API não configurada. O app não pode gerar conteúdo.");
+  }
+  return new GoogleGenAI({ apiKey: API_KEY });
+};
+
+export const hasApiKey = (): boolean => !!API_KEY;
 
 export const generateQuizQuestions = async (config: QuizConfig): Promise<Question[]> => {
+  const ai = getAI();
+  
   const prompt = `Você é uma banca examinadora de concursos (estilo CEBRASPE/FGV).
   Gere ${config.numberOfQuestions} perguntas de múltipla escolha EXTREMAMENTE TÉCNICAS sobre: "${config.topic}".
   Dificuldade: ${config.difficulty}.
@@ -26,38 +38,44 @@ export const generateQuizQuestions = async (config: QuizConfig): Promise<Questio
   - As questões devem ser desafiadoras.
   - A explicação deve citar o artigo da lei ou súmula quando aplicável.`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL_NAME,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            text: { type: Type.STRING, description: "Enunciado da questão" },
-            options: { 
-              type: Type.ARRAY, 
-              items: { type: Type.STRING },
-              description: "4 alternativas de resposta" 
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: {
+        safetySettings: SAFETY_SETTINGS,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              text: { type: Type.STRING, description: "Enunciado da questão" },
+              options: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING },
+                description: "4 alternativas de resposta" 
+              },
+              correctAnswerIndex: { type: Type.INTEGER, description: "Índice (0-3) da correta" },
+              explanation: { type: Type.STRING, description: "Gabarito comentado com base legal" }
             },
-            correctAnswerIndex: { type: Type.INTEGER, description: "Índice (0-3) da correta" },
-            explanation: { type: Type.STRING, description: "Gabarito comentado com base legal" }
-          },
-          required: ["id", "text", "options", "correctAnswerIndex", "explanation"]
+            required: ["id", "text", "options", "correctAnswerIndex", "explanation"]
+          }
         }
       }
-    }
-  });
+    });
 
-  if (!response.text) throw new Error("A IA não retornou dados.");
-  return JSON.parse(response.text);
+    if (!response.text) throw new Error("A IA não retornou dados.");
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("Erro ao gerar quiz:", error);
+    throw error;
+  }
 };
 
 export const askBizuTutor = async (history: {role: string, parts: {text: string}[]}[], message: string): Promise<string> => {
+  const ai = getAI();
   const chat = ai.chats.create({
     model: MODEL_NAME,
     history: history,
@@ -72,6 +90,7 @@ export const askBizuTutor = async (history: {role: string, parts: {text: string}
 };
 
 export const generateStudyMaterials = async (count: number = 3): Promise<StudyMaterial[]> => {
+  const ai = getAI();
   const topics = [
     "Direito Constitucional", "Direito Administrativo", "Processo Penal", 
     "Raciocínio Lógico", "Informática para Concursos", "Legislação Especial", "Direito Penal", "AFO"
@@ -82,42 +101,48 @@ export const generateStudyMaterials = async (count: number = 3): Promise<StudyMa
   Sugira materiais sobre: ${randomTopic} ou temas quentes do momento.
   Conteúdo em PT-BR.`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL_NAME,
-    contents: prompt,
-    config: {
-      safetySettings: SAFETY_SETTINGS,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING, description: "Título chamativo do material" },
-            category: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
-            duration: { type: Type.STRING },
-            summary: { type: Type.STRING }
-          },
-          required: ["title", "category", "type", "duration", "summary"]
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: {
+        safetySettings: SAFETY_SETTINGS,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING, description: "Título chamativo do material" },
+              category: { type: Type.STRING },
+              type: { type: Type.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
+              duration: { type: Type.STRING },
+              summary: { type: Type.STRING }
+            },
+            required: ["title", "category", "type", "duration", "summary"]
+          }
         }
       }
-    }
-  });
+    });
 
-  if (!response.text) return [];
-  
-  const rawMaterials = JSON.parse(response.text);
-  
-  // Enrich with client-side IDs
-  return rawMaterials.map((m: any) => ({
-    ...m,
-    id: crypto.randomUUID(),
-    updatedAt: new Date().toISOString().split('T')[0]
-  })) as StudyMaterial[];
+    if (!response.text) return [];
+    
+    const rawMaterials = JSON.parse(response.text);
+    
+    // Enrich with client-side IDs
+    return rawMaterials.map((m: any) => ({
+      ...m,
+      id: crypto.randomUUID(),
+      updatedAt: new Date().toISOString().split('T')[0]
+    })) as StudyMaterial[];
+  } catch (error) {
+    console.error("Erro ao gerar materiais:", error);
+    return [];
+  }
 };
 
 export const generateMaterialContent = async (material: StudyMaterial): Promise<string> => {
+  const ai = getAI();
   const prompt = `Aja como um professor de elite de cursinho preparatório.
   Crie o CONTEÚDO COMPLETO para:
   Título: ${material.title}
@@ -142,6 +167,7 @@ export const generateMaterialContent = async (material: StudyMaterial): Promise<
 };
 
 export const generateStudyRoutine = async (targetExam: string, hours: number, subjects: string): Promise<StudyRoutine> => {
+  const ai = getAI();
   const prompt = `Sou um 'concurseiro' focado em: "${targetExam}".
     Tenho ${hours} horas líquidas por dia.
     Matérias chave: ${subjects}.

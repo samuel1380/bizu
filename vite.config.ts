@@ -10,7 +10,6 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     build: {
       outDir: 'dist',
-      // Fix for "Chunk size warning" - increases limit and splits vendor files
       chunkSizeWarningLimit: 1000, 
       rollupOptions: {
         output: {
@@ -23,8 +22,8 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
-      // Substitui process.env.API_KEY pelo valor real durante o build
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      // Garante que a chave seja uma string, mesmo que vazia, para evitar crash no JSON.stringify
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
       // Evita erro de "process is not defined" no navegador
       'process.env': {} 
     }
