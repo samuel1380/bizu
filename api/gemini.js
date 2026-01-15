@@ -20,15 +20,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Fix: Check process.env.API_KEY directly
   if (!process.env.API_KEY) {
     return res.status(500).json({ error: 'Server misconfigured: Missing API Key' });
   }
 
-  // Fix: Initialize with direct environment variable
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // Fix: Update model to gemini-3-flash-preview
   const modelName = "gemini-3-flash-preview"; 
   
   const { action, payload } = req.body;
@@ -64,14 +60,12 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("AI Error:", error);
     if (error.message && error.message.includes('429')) {
-        return res.status(429).json({ error: 'Muitas pessoas usando o Bizu agora! Tente em 30 segundos.' });
+        return res.status(429).json({ error: 'Muitas pessoas usando o Bizu agora! O sistema tentará novamente...' });
     }
     return res.status(500).json({ error: 'Erro ao processar solicitação', details: error.message });
   }
 }
 
-// Configuração de Segurança para permitir conteúdo de Direito Penal/Criminologia
-// Sem isso, a IA bloqueia perguntas sobre "Homicídio", "Drogas", etc.
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -80,21 +74,17 @@ const SAFETY_SETTINGS = [
 ];
 
 async function handleGenerateQuiz(ai, model, config) {
-  const prompt = `Você é uma banca examinadora de concursos (estilo CEBRASPE/FGV).
-  Gere ${config.numberOfQuestions} perguntas de múltipla escolha EXTREMAMENTE TÉCNICAS sobre: "${config.topic}".
+  const prompt = `Gere ${config.numberOfQuestions} perguntas de múltipla escolha sobre: "${config.topic}".
   Dificuldade: ${config.difficulty}.
-  Idioma: Português do Brasil.
-  
-  IMPORTANTE:
-  - Foque na letra da lei e jurisprudência.
-  - As questões devem ser desafiadoras.
-  - A explicação deve citar o artigo da lei ou súmula quando aplicável.`;
+  Foco: Letra da lei e jurisprudência.
+  Seja direto.`;
   
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
+      thinkingConfig: { thinkingBudget: 0 }, // DISABLE THINKING FOR SPEED
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -102,14 +92,14 @@ async function handleGenerateQuiz(ai, model, config) {
           type: Type.OBJECT,
           properties: {
             id: { type: Type.STRING },
-            text: { type: Type.STRING, description: "Enunciado da questão" },
+            text: { type: Type.STRING, description: "Enunciado curto" },
             options: { 
               type: Type.ARRAY, 
               items: { type: Type.STRING },
-              description: "4 alternativas de resposta" 
+              description: "4 alternativas" 
             },
-            correctAnswerIndex: { type: Type.INTEGER, description: "Índice (0-3) da correta" },
-            explanation: { type: Type.STRING, description: "Gabarito comentado com base legal" }
+            correctAnswerIndex: { type: Type.INTEGER },
+            explanation: { type: Type.STRING, description: "Breve justificativa" }
           },
           required: ["id", "text", "options", "correctAnswerIndex", "explanation"]
         }
@@ -126,7 +116,8 @@ async function handleAskTutor(ai, model, { history, message }) {
     history: history,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      systemInstruction: "Você é o 'BizuBot', o melhor professor de cursinho do Brasil. Você é 'facul na caveira', direto, motivador e especialista em todas as bancas (FGV, Cebraspe, Vunesp). Use gírias de concurseiro ('lei seca', 'vade mecum', 'papiro'). Se o aluno estiver desmotivado, dê um choque de realidade. Responda sempre com formatação Markdown bonita.",
+      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP CHAT
+      systemInstruction: "Você é o 'BizuBot'. Responda de forma curta, direta e motivadora. Use gírias de concurso.",
     }
   });
 
@@ -135,28 +126,24 @@ async function handleAskTutor(ai, model, { history, message }) {
 }
 
 async function handleGenerateMaterials(ai, model, { count }) {
-  const topics = [
-    "Direito Constitucional", "Direito Administrativo", "Processo Penal", 
-    "Raciocínio Lógico", "Informática para Concursos", "Legislação Especial", "Direito Penal", "AFO"
-  ];
+  const topics = ["Direito Constitucional", "Administrativo", "Penal", "Raciocínio Lógico", "Informática"];
   const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
-  const prompt = `Gere ${count} materiais de estudo focados em ALTA PERFORMANCE para concursos.
-  Sugira materiais sobre: ${randomTopic} ou temas quentes do momento.
-  Conteúdo em PT-BR.`;
+  const prompt = `Sugira ${count} materiais de estudo sobre: ${randomTopic}. PT-BR.`;
 
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
+      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP LIST GENERATION
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
         items: {
           type: Type.OBJECT,
           properties: {
-            title: { type: Type.STRING, description: "Título chamativo do material" },
+            title: { type: Type.STRING },
             category: { type: Type.STRING },
             type: { type: Type.STRING, enum: ["PDF", "VIDEO", "ARTICLE"] },
             duration: { type: Type.STRING },
@@ -172,23 +159,15 @@ async function handleGenerateMaterials(ai, model, { count }) {
 }
 
 async function handleMaterialContent(ai, model, { material }) {
-  const prompt = `Aja como um professor de elite de cursinho preparatório.
-  Crie o CONTEÚDO COMPLETO para:
-  Título: ${material.title}
-  Área: ${material.category}
-  Tipo: ${material.type}
-
-  O conteúdo deve ser denso, rico em detalhes, citar leis, dar macetes mnemônicos e focar no que cai na prova.
-  Se for VIDEO, escreva o roteiro aula passo-a-passo.
-  Se for PDF, escreva o texto corrido formatado.
-  
-  Termine com 3 questões 'Certo ou Errado' estilo Cebraspe sobre o tema.`;
+  const prompt = `Crie conteúdo didático para: ${material.title} (${material.category}).
+  Seja objetivo, use tópicos e cite leis importantes.`;
 
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
+      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP TEXT GENERATION
     }
   });
 
@@ -196,19 +175,14 @@ async function handleMaterialContent(ai, model, { material }) {
 }
 
 async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects }) {
-  const prompt = `Sou um 'concurseiro' focado em: "${targetExam}".
-    Tenho ${hours} horas líquidas por dia.
-    Matérias chave: ${subjects}.
-    
-    Monte um CICLO DE ESTUDOS semanal insano de produtivo.
-    Intercale matérias teóricas com questões.
-    Domingo é dia de simulado e revisão.`;
+  const prompt = `Crie um ciclo de estudos semanal para: "${targetExam}", ${hours}h/dia. Matérias: ${subjects}.`;
 
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
+      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP ROUTINE
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -244,20 +218,16 @@ async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects })
 
 async function handleUpdateRadar(ai, model) {
   const today = new Date().toLocaleDateString('pt-BR');
-  const prompt = `PESQUISA GOOGLE OBRIGATÓRIA.
-  
-  Pesquise na web (data atual: ${today}) por "Concursos Previstos 2026 Brasil" e "Concursos Abertos 2025".
-  Encontre 6 oportunidades REAIS de alto nível (PF, PRF, Bancos, Tribunais, Fiscal).
-  
-  Para cada concurso, você DEVE extrair a URL de onde tirou a informação (site de notícias como Folha Dirigida, Estratégia, GranCursos, G1) e colocar no campo 'url'.
-  
-  Seja preciso nas previsões.`;
+  const prompt = `Pesquise "Concursos 2026 Brasil". Liste 6 oportunidades REAIS e seus links de origem (url). Data: ${today}.`;
 
   const response = await ai.models.generateContent({
-    model, // Use gemini-3-flash-preview
+    model, 
     contents: prompt,
     config: {
-      tools: [{ googleSearch: {} }], // Use Google Search for grounding
+      tools: [{ googleSearch: {} }],
+      // Google Search often requires thinking, so we keep it default or low, but let's try 0 for speed first.
+      // If search quality drops, we might need to remove this line, but user wants speed.
+      thinkingConfig: { thinkingBudget: 0 }, 
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -265,17 +235,13 @@ async function handleUpdateRadar(ai, model) {
           type: Type.OBJECT,
           properties: {
             id: { type: Type.STRING },
-            institution: { type: Type.STRING, description: "Nome do Órgão (ex: Polícia Federal)" },
-            title: { type: Type.STRING, description: "Cargos (ex: Agente e Escrivão)" },
-            forecast: { type: Type.STRING, description: "Previsão realista da data ou status temporal (ex: 2º Sem/2026)" },
-            status: { 
-               type: Type.STRING, 
-               enum: ['Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'],
-               description: "Status atual do certame"
-            },
-            salary: { type: Type.STRING, description: "Remuneração inicial (ex: R$ 14.000+)" },
-            board: { type: Type.STRING, description: "Banca organizadora (ex: Cebraspe, FGV ou 'A definir')" },
-            url: { type: Type.STRING, description: "URL da fonte da notícia encontrada na pesquisa" }
+            institution: { type: Type.STRING },
+            title: { type: Type.STRING },
+            forecast: { type: Type.STRING },
+            status: { type: Type.STRING, enum: ['Edital Publicado', 'Banca Definida', 'Autorizado', 'Solicitado', 'Previsto'] },
+            salary: { type: Type.STRING },
+            board: { type: Type.STRING },
+            url: { type: Type.STRING }
           },
           required: ["institution", "title", "forecast", "status", "salary", "board"]
         }
@@ -283,7 +249,6 @@ async function handleUpdateRadar(ai, model) {
     }
   });
 
-  // CLEANING LOGIC: Remove Markdown code blocks if present (common issue causing parse errors)
   let jsonString = response.text;
   if (jsonString.includes('```')) {
     jsonString = jsonString.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
