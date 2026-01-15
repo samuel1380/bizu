@@ -11,11 +11,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CONFIGURAÇÃO DA IA ---
-// Usando 1.5-Flash: Melhor balanceamento entre velocidade e cota gratuita
-const MODEL_NAME = "gemini-1.5-flash";
+// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO) ---
+// O sistema tentará estes modelos em ordem. Se o primeiro falhar (404), tenta o próximo.
+// Isso garante que sua chave funcione independente da versão liberada para ela.
+const MODEL_FALLBACK_LIST = [
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash-001"
+];
 
-// Configurações de segurança permissivas para evitar bloqueios falsos em conteúdo educativo
+// Configurações de segurança permissivas
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -30,13 +36,12 @@ app.use(express.static(join(__dirname, 'dist')));
 
 // --- HELPERS ---
 
-// Limpa blocos de código markdown (```json) que a IA às vezes retorna
 function cleanJSON(text) {
   if (!text) return "{}";
-  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+  return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
 }
 
-// Inicializa a IA com a chave do ambiente
+// Inicializa a IA com a chave do ambiente (Sempre lê a variável atual)
 function getAI() {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY_MISSING");
@@ -44,9 +49,50 @@ function getAI() {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
-// --- PROMPTS E LÓGICA DE NEGÓCIO ---
+// --- FUNÇÃO "BLINDADA" DE EXECUÇÃO ---
+// Tenta executar a ação com o modelo preferido. Se der erro de modelo (404), tenta o próximo.
+async function runWithModelFallback(ai, actionCallback) {
+  let lastError = null;
 
-async function handleGenerateQuiz(ai, { topic, difficulty, numberOfQuestions }) {
+  // Se o usuário definiu um modelo específico no Render (AI_MODEL), tenta ele primeiro.
+  // Se não, usa a lista padrão.
+  const modelsToTry = process.env.AI_MODEL 
+    ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
+    : MODEL_FALLBACK_LIST;
+
+  // Remove duplicatas
+  const uniqueModels = [...new Set(modelsToTry)];
+
+  for (const model of uniqueModels) {
+    try {
+      // console.log(`Tentando modelo: ${model}...`); // Debug (opcional)
+      return await actionCallback(model);
+    } catch (error) {
+      // Se o erro for "Not Found" (404) ou problema de versão do modelo, continua para o próximo
+      if (
+        error.message && (
+          error.message.includes("404") || 
+          error.message.includes("not found") || 
+          error.message.includes("not supported")
+        )
+      ) {
+        console.warn(`⚠️ Modelo ${model} falhou (404/Incompatível). Tentando próximo...`);
+        lastError = error;
+        continue; 
+      }
+      
+      // Se for outro erro (ex: quota 429, auth 401), lança imediatamente
+      throw error;
+    }
+  }
+
+  // Se todos falharem
+  throw lastError || new Error("Nenhum modelo de IA disponível funcionou com esta chave.");
+}
+
+// --- LÓGICA DE NEGÓCIO (ADAPTADA PARA RECEBER O NOME DO MODELO) ---
+
+async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
   const prompt = `Gere um JSON array com ${numberOfQuestions} questões de concurso sobre "${topic}" (Nível: ${difficulty}).
   Formato obrigatório:
   [
@@ -60,7 +106,7 @@ async function handleGenerateQuiz(ai, { topic, difficulty, numberOfQuestions }) 
   ]`;
   
   const response = await ai.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: prompt,
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
@@ -68,12 +114,11 @@ async function handleGenerateQuiz(ai, { topic, difficulty, numberOfQuestions }) 
   return JSON.parse(cleanJSON(response.text));
 }
 
-async function handleAskTutor(ai, { history, message }) {
-  // Mantém apenas as últimas 10 mensagens para economizar tokens
+async function handleAskTutor(ai, modelName, { history, message }) {
   const limitedHistory = (history || []).slice(-10);
   
   const chat = ai.chats.create({
-    model: MODEL_NAME,
+    model: modelName,
     history: limitedHistory,
     config: {
       systemInstruction: "Você é o BizuBot, mentor de concursos. Seja direto, motivador e use Markdown.",
@@ -85,7 +130,7 @@ async function handleAskTutor(ai, { history, message }) {
   return { text: result.text };
 }
 
-async function handleGenerateMaterials(ai, { count }) {
+async function handleGenerateMaterials(ai, modelName, { count }) {
   const prompt = `Sugira ${count} materiais de estudo para concursos públicos hoje.
   Retorne JSON Array:
   [
@@ -99,7 +144,7 @@ async function handleGenerateMaterials(ai, { count }) {
   ]`;
 
   const response = await ai.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: prompt,
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
@@ -107,11 +152,11 @@ async function handleGenerateMaterials(ai, { count }) {
   return JSON.parse(cleanJSON(response.text));
 }
 
-async function handleGenerateMaterialContent(ai, { material }) {
+async function handleGenerateMaterialContent(ai, modelName, { material }) {
   const prompt = `Crie uma aula completa (formato Markdown) sobre: ${material.title} (${material.category}).`;
   
   const response = await ai.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: prompt,
     config: { safetySettings: SAFETY_SETTINGS }
   });
@@ -119,13 +164,13 @@ async function handleGenerateMaterialContent(ai, { material }) {
   return { content: response.text };
 }
 
-async function handleGenerateRoutine(ai, { targetExam, hours, subjects }) {
+async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subjects }) {
   const prompt = `Crie uma rotina semanal (JSON) para passar no concurso: ${targetExam}. 
   Disponibilidade: ${hours}h/dia. Matérias: ${subjects}.
   Formato: { "weekSchedule": [ { "day": "Segunda", "focus": "...", "tasks": [{ "subject": "...", "activity": "...", "duration": "..." }] } ] }`;
 
   const response = await ai.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: prompt,
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
@@ -133,12 +178,12 @@ async function handleGenerateRoutine(ai, { targetExam, hours, subjects }) {
   return JSON.parse(cleanJSON(response.text));
 }
 
-async function handleUpdateRadar(ai) {
+async function handleUpdateRadar(ai, modelName) {
   const prompt = `Liste 5 concursos previstos no Brasil (JSON Array).
   Campos: institution, title, forecast, status (Edital Publicado/Autorizado/Previsto), salary, board, url.`;
 
   const response = await ai.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: prompt,
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
@@ -156,31 +201,31 @@ app.post('/api/gemini', async (req, res) => {
     const ai = getAI();
     let result;
 
-    // Retry simples (1 tentativa extra se falhar)
-    try {
-      switch (action) {
-        case 'generateQuiz': result = await handleGenerateQuiz(ai, payload); break;
-        case 'askTutor': result = await handleAskTutor(ai, payload); break;
-        case 'generateMaterials': result = await handleGenerateMaterials(ai, payload); break;
-        case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, payload); break;
-        case 'generateRoutine': result = await handleGenerateRoutine(ai, payload); break;
-        case 'updateRadar': result = await handleUpdateRadar(ai); break;
-        default: return res.status(400).json({ error: "Ação desconhecida" });
-      }
-    } catch (innerError) {
-      console.warn(`[API] Falha na primeira tentativa (${action}), tentando novamente...`);
-      // Pequeno delay e retry
-      await new Promise(r => setTimeout(r, 1500));
-      // Switch duplicado para retry (simples e eficaz)
-      switch (action) {
-        case 'generateQuiz': result = await handleGenerateQuiz(ai, payload); break;
-        case 'askTutor': result = await handleAskTutor(ai, payload); break;
-        case 'generateMaterials': result = await handleGenerateMaterials(ai, payload); break;
-        case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, payload); break;
-        case 'generateRoutine': result = await handleGenerateRoutine(ai, payload); break;
-        case 'updateRadar': result = await handleUpdateRadar(ai); break;
-      }
-    }
+    // Executa usando o sistema de fallback (tenta vários modelos se necessário)
+    await runWithModelFallback(ai, async (modelName) => {
+        switch (action) {
+            case 'generateQuiz': 
+                result = await handleGenerateQuiz(ai, modelName, payload); 
+                break;
+            case 'askTutor': 
+                result = await handleAskTutor(ai, modelName, payload); 
+                break;
+            case 'generateMaterials': 
+                result = await handleGenerateMaterials(ai, modelName, payload); 
+                break;
+            case 'generateMaterialContent': 
+                result = await handleGenerateMaterialContent(ai, modelName, payload); 
+                break;
+            case 'generateRoutine': 
+                result = await handleGenerateRoutine(ai, modelName, payload); 
+                break;
+            case 'updateRadar': 
+                result = await handleUpdateRadar(ai, modelName); 
+                break;
+            default: 
+                throw new Error("Ação desconhecida");
+        }
+    });
 
     res.json(result);
 
@@ -192,27 +237,30 @@ app.post('/api/gemini', async (req, res) => {
     }
     
     if (error.message && error.message.includes("429")) {
-      return res.status(429).json({ error: "Muitas requisições. Aguarde um momento." });
+      return res.status(429).json({ error: "Muitas requisições. A IA está ocupada, tente em 30 segundos." });
+    }
+    
+    // Se chegou aqui, todos os modelos falharam
+    if (error.message && (error.message.includes("404") || error.message.includes("not found"))) {
+        return res.status(404).json({ error: "Nenhum modelo de IA compatível foi encontrado para esta chave API." });
     }
 
     res.status(500).json({ error: "Erro interno na IA. Tente novamente." });
   }
 });
 
-// Rota Catch-All para React Router (SPA)
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-// --- INICIALIZAÇÃO ---
 app.listen(PORT, () => {
-  console.log(`✅ SERVIDOR REINICIADO NA PORTA ${PORT}`);
-  console.log(`🤖 Modelo: ${MODEL_NAME}`);
+  console.log(`✅ SERVIDOR ONLINE NA PORTA ${PORT}`);
   
   if (process.env.API_KEY) {
     const maskedKey = process.env.API_KEY.substring(0, 5) + "...";
-    console.log(`🔑 API Key detectada: ${maskedKey} (OK)`);
+    console.log(`🔑 API Key: ${maskedKey} (OK)`);
+    console.log(`🛡️  Sistema de Fallback Ativo: Se um modelo falhar, tentarei outro automaticamente.`);
   } else {
-    console.log(`❌ API Key NÃO detectada! Verifique as Variáveis de Ambiente.`);
+    console.log(`❌ API Key: NÃO ENCONTRADA`);
   }
 });
