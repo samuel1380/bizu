@@ -244,12 +244,14 @@ async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects })
 
 async function handleUpdateRadar(ai, model) {
   const today = new Date().toLocaleDateString('pt-BR');
-  const prompt = `Use a pesquisa do Google para encontrar as últimas notícias (data de hoje: ${today}) sobre Concursos Públicos no Brasil previstos para o restante de 2025 e para o ano de 2026.
+  const prompt = `PESQUISA GOOGLE OBRIGATÓRIA.
   
-  Foque em concursos de grande porte e carreiras top: Polícia Federal (PF), PRF, Tribunais (TSE, TRFs, TJs), Bancos, Receita Federal, INSS.
+  Pesquise na web (data atual: ${today}) por "Concursos Previstos 2026 Brasil" e "Concursos Abertos 2025".
+  Encontre 6 oportunidades REAIS de alto nível (PF, PRF, Bancos, Tribunais, Fiscal).
   
-  Extraia informações REAIS e ATUALIZADAS. Não invente datas. Se não tiver data exata, coloque a previsão baseada nas notícias (ex: "Solicitado", "Estudos em andamento").
-  Retorne exatamente 6 oportunidades mais quentes.`;
+  Para cada concurso, você DEVE extrair a URL de onde tirou a informação (site de notícias como Folha Dirigida, Estratégia, GranCursos, G1) e colocar no campo 'url'.
+  
+  Seja preciso nas previsões.`;
 
   const response = await ai.models.generateContent({
     model, // Use gemini-3-flash-preview
@@ -273,7 +275,7 @@ async function handleUpdateRadar(ai, model) {
             },
             salary: { type: Type.STRING, description: "Remuneração inicial (ex: R$ 14.000+)" },
             board: { type: Type.STRING, description: "Banca organizadora (ex: Cebraspe, FGV ou 'A definir')" },
-            url: { type: Type.STRING, description: "URL da fonte da notícia, se disponível" }
+            url: { type: Type.STRING, description: "URL da fonte da notícia encontrada na pesquisa" }
           },
           required: ["institution", "title", "forecast", "status", "salary", "board"]
         }
@@ -281,9 +283,11 @@ async function handleUpdateRadar(ai, model) {
     }
   });
 
-  // Nota: O URL extraído do groundingChunks poderia ser mapeado aqui, 
-  // mas o modelo gemini-3-flash com responseSchema muitas vezes já infere o link se solicitado no schema ou usa seu conhecimento.
-  // Para simplificar no schema JSON direto, confiamos na extração do modelo.
-
-  return JSON.parse(response.text);
+  // CLEANING LOGIC: Remove Markdown code blocks if present (common issue causing parse errors)
+  let jsonString = response.text;
+  if (jsonString.includes('```')) {
+    jsonString = jsonString.replace(/^```json\s?/, '').replace(/^```\s?/, '').replace(/```$/, '');
+  }
+  
+  return JSON.parse(jsonString);
 }
