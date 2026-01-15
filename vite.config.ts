@@ -14,9 +14,5 @@ export default defineConfig({
         }
       }
     }
-  },
-  define: {
-    // Garante compatibilidade com algumas bibliotecas
-    'process.env': {} 
   }
 });
