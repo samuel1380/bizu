@@ -25,7 +25,10 @@ export default async function handler(req, res) {
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = "gemini-3-flash-preview"; 
+  
+  // MUDANÇA: Usando Gemini 2.0 Flash
+  // É o modelo mais rápido e estável atualmente para alto volume de requisições (muitos clientes)
+  const modelName = "gemini-2.0-flash"; 
   
   const { action, payload } = req.body;
 
@@ -84,7 +87,7 @@ async function handleGenerateQuiz(ai, model, config) {
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // DISABLE THINKING FOR SPEED
+      // thinkingConfig REMOVIDO: Não suportado no 2.0 Flash e causa lentidão/erros
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -116,7 +119,7 @@ async function handleAskTutor(ai, model, { history, message }) {
     history: history,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP CHAT
+      // systemInstruction simplificado para evitar sobrecarga de tokens no setup
       systemInstruction: "Você é o 'BizuBot'. Responda de forma curta, direta e motivadora. Use gírias de concurso.",
     }
   });
@@ -136,7 +139,6 @@ async function handleGenerateMaterials(ai, model, { count }) {
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP LIST GENERATION
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -167,7 +169,6 @@ async function handleMaterialContent(ai, model, { material }) {
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP TEXT GENERATION
     }
   });
 
@@ -182,7 +183,6 @@ async function handleGenerateRoutine(ai, model, { targetExam, hours, subjects })
     contents: prompt,
     config: {
       safetySettings: SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 }, // SPEED UP ROUTINE
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -224,10 +224,10 @@ async function handleUpdateRadar(ai, model) {
     model, 
     contents: prompt,
     config: {
+      // Gemini 2.0 Flash suporta tools, mas em ambientes serverless como Vercel
+      // o tempo de execução do Google Search pode causar timeout.
+      // Mantivemos ativado, mas se continuar dando erro, remova a linha 'tools'.
       tools: [{ googleSearch: {} }],
-      // Google Search often requires thinking, so we keep it default or low, but let's try 0 for speed first.
-      // If search quality drops, we might need to remove this line, but user wants speed.
-      thinkingConfig: { thinkingBudget: 0 }, 
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
