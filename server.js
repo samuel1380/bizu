@@ -11,17 +11,20 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- LISTA DE MODELOS (ORDEM DE EFICIÊNCIA) ---
-// O Gemini 1.5 Flash costuma ter limites maiores no tier gratuito que o 3.0 Preview.
-// Reorganizei para tentar manter qualidade x estabilidade.
+// --- LISTA UNIVERSAL DE MODELOS ---
+// A ordem aqui define a prioridade.
+// 1. gemini-1.5-flash: Maior limite gratuito, extremamente rápido e estável.
+// 2. gemini-2.0-flash: Ótimo balanço entre inteligência e velocidade.
+// 3. gemini-1.5-pro: Mais inteligente, porém mais lento e com limite menor.
+// 4. gemini-3-flash-preview: Experimental (limites baixos, usar com cautela).
 const MODEL_FALLBACK_LIST = [
-  "gemini-3-flash-preview",    // Mais rápido (Prioridade)
-  "gemini-2.0-flash",          // Muito estável
-  "gemini-1.5-flash-latest",   // Fallback robusto (nome corrigido)
-  "gemini-1.5-pro-latest"      // Último recurso (mais lento, mas potente)
+  "gemini-1.5-flash",       
+  "gemini-2.0-flash",       
+  "gemini-1.5-pro",         
+  "gemini-3-flash-preview", 
+  "gemini-1.5-flash-8b"     // Opção ultra-leve
 ];
 
-// Configurações de segurança
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -34,11 +37,33 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, 'dist')));
 
-// --- HELPERS ---
+// --- HELPERS DE PARSEAMENTO ROBUSTO ---
 
-function cleanJSON(text) {
+/**
+ * Tenta extrair um JSON válido de qualquer string de texto.
+ * Funciona mesmo se a IA responder "Aqui está o seu JSON: { ... }"
+ */
+function extractJSON(text) {
   if (!text) return "{}";
-  return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+
+  // 1. Tenta limpar blocos de código markdown
+  let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+  // 2. Se já parecer JSON, retorna
+  if ((cleanText.startsWith('{') && cleanText.endsWith('}')) || 
+      (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
+    return cleanText;
+  }
+
+  // 3. Regex para encontrar o primeiro objeto {} ou array []
+  const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+
+  // 4. Fallback: retorna o texto original limpo (pode falhar no JSON.parse, mas tentamos)
+  return cleanText;
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -50,104 +75,119 @@ function getAI() {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
-// --- FUNÇÃO "BLINDADA" DE EXECUÇÃO COM RETRY INTELIGENTE ---
+// --- EXECUTOR UNIVERSAL ---
 async function runWithModelFallback(ai, actionCallback) {
-  let lastError = null;
+  // Se o usuário forçar um modelo via variável de ambiente, tentamos ele PRIMEIRO e com insistência.
+  let modelsToTry = [...MODEL_FALLBACK_LIST];
+  
+  if (process.env.AI_MODEL) {
+    console.log(`[Config] Modelo forçado pelo usuário: ${process.env.AI_MODEL}`);
+    // Coloca o modelo do usuário no topo da lista
+    modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
+  }
 
-  // Se o usuário definiu modelo fixo, usa ele. Se não, usa a lista.
-  const modelsToTry = process.env.AI_MODEL 
-    ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
-    : MODEL_FALLBACK_LIST;
-
+  // Remove duplicatas
   const uniqueModels = [...new Set(modelsToTry)];
 
   for (const model of uniqueModels) {
-    // Tenta cada modelo até 2 vezes se for erro de taxa (429)
-    for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-            // console.log(`Tentando ${model} (Tentativa ${attempt})...`);
-            return await actionCallback(model);
-        } catch (error) {
-            const errorMessage = error.message || "";
-            lastError = error;
+    try {
+      // console.log(`Tentando modelo: ${model}...`);
+      return await actionCallback(model);
+    } catch (error) {
+      const msg = error.message || "";
+      
+      // Se for erro de cota (429), esperamos um pouco e tentamos o próximo
+      if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        console.warn(`⚠️ ${model} atingiu o limite (429). Alternando...`);
+        await sleep(1000); // Backoff curto para trocar de modelo rápido
+        continue;
+      }
 
-            // 1. Erro de Modelo não encontrado (404) -> Pula para o próximo modelo imediatamente
-            if (errorMessage.includes("404") || errorMessage.includes("not found")) {
-                console.warn(`⚠️ Modelo ${model} indisponível (404). Pulando...`);
-                break; // Sai do loop de tentativas e vai para o próximo modelo
-            }
+      // Se o modelo não existir (404), vai para o próximo
+      if (msg.includes("404") || msg.includes("not found")) {
+        console.warn(`⚠️ ${model} não disponível para sua chave API. Alternando...`);
+        continue;
+      }
 
-            // 2. Erro de Cota/Sobrecarga (429 ou 503)
-            if (errorMessage.includes("429") || errorMessage.includes("Quota") || errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("503")) {
-                // Se for a primeira tentativa, espera e tenta de novo o MESMO modelo
-                if (attempt === 1) {
-                    console.warn(`⏳ Cota excedida no ${model}. Esfriando por 5 segundos...`);
-                    await sleep(5000); // 5 segundos de espera (Crucial para Free Tier)
-                    continue; // Tenta de novo
-                } else {
-                    // Se falhou na segunda, espera um pouco e vai para o PRÓXIMO modelo
-                    console.warn(`⚠️ ${model} falhou 2x. Trocando de modelo...`);
-                    await sleep(2000); 
-                    break;
-                }
-            }
-            
-            // Outros erros (JSON inválido, Safety, etc) -> Lança erro
-            throw error;
-        }
+      // Se for outro erro, lançamos para ser tratado na rota
+      throw error;
     }
   }
 
-  console.error("❌ Esgotadas todas as tentativas de modelos.");
-  throw new Error("Sistema sobrecarregado. Por favor, aguarde 30 segundos antes de tentar novamente.");
+  throw new Error("Todos os modelos de IA falharam ou estão ocupados.");
 }
 
-// --- LÓGICA DE NEGÓCIO OTIMIZADA ---
+// --- AÇÕES ---
 
 async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
-  const prompt = `Gere JSON com ${numberOfQuestions} questões: "${topic}" (${difficulty}).
-  Schema: [{"id":"uuid","text":"P","options":["A","B","C","D","E"],"correctAnswerIndex":0,"explanation":"E"}]`;
+  // Configuração para garantir JSON mesmo em modelos antigos
+  const prompt = `Você é um gerador de questões JSON.
+  Tarefa: Criar ${numberOfQuestions} questões sobre "${topic}" (${difficulty}).
+  
+  IMPORTANTE: Responda APENAS com o JSON puro. Sem introduções.
+  
+  Schema obrigatório:
+  [
+    {
+      "id": "uuid",
+      "text": "Enunciado da questão",
+      "options": ["Alternativa A", "B", "C", "D", "E"],
+      "correctAnswerIndex": 0,
+      "explanation": "Explicação breve"
+    }
+  ]`;
   
   const response = await ai.models.generateContent({
     model: modelName,
     contents: prompt,
-    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+    config: { 
+      responseMimeType: "application/json", 
+      safetySettings: SAFETY_SETTINGS 
+    }
   });
   
-  return JSON.parse(cleanJSON(response.text));
+  const jsonStr = extractJSON(response.text);
+  return JSON.parse(jsonStr);
 }
 
 async function handleAskTutor(ai, modelName, { history, message }) {
-  // OTIMIZAÇÃO CRÍTICA: Reduzir histórico para economizar tokens e evitar 429
-  // Envia apenas as últimas 2 interações (User + Bot) + a mensagem atual
-  const limitedHistory = (history || []).slice(-2); 
+  // Limita contexto para economizar tokens e evitar erros em modelos com janela pequena
+  const limitedHistory = (history || []).slice(-6); 
   
   const chat = ai.chats.create({
     model: modelName,
     history: limitedHistory,
     config: {
-      systemInstruction: "Seja o BizuBot. Responda em Markdown. Seja curto e útil.",
+      systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown (negrito, listas).",
       safetySettings: SAFETY_SETTINGS
     }
   });
   
   const result = await chat.sendMessage({ message });
   
-  const responseText = result.text;
-  
-  if (!responseText || responseText.trim().length === 0) {
-      if (result.candidates && result.candidates.length > 0 && result.candidates[0].finishReason !== 'STOP') {
-         return { text: "⚠️ Resposta bloqueada por segurança. Tente reformular." };
-      }
-      return { text: "⚠️ Ocorreu um erro silencioso na IA. Tente novamente." };
+  // Tratamento para respostas vazias
+  if (!result.text || result.text.trim() === "") {
+     return { text: "⚠️ A IA recebeu sua mensagem mas não gerou texto. Tente reformular." };
   }
-
-  return { text: responseText };
+  
+  return { text: result.text };
 }
 
 async function handleGenerateMaterials(ai, modelName, { count }) {
-  const prompt = `Liste ${count} materiais (PDF/ARTICLE) sobre concursos. Sem vídeos.
-  Schema: [{"title":"T","category":"C","type":"PDF","duration":"15 pág","summary":"S"}]`;
+  const prompt = `Liste ${count} materiais de estudo sobre concursos.
+  Format: JSON Array.
+  Types: "PDF" ou "ARTICLE". (NO VIDEO).
+  
+  Schema:
+  [
+    {
+      "title": "Título do Material",
+      "category": "Matéria",
+      "type": "PDF",
+      "duration": "10 pág",
+      "summary": "Resumo breve"
+    }
+  ]`;
 
   const response = await ai.models.generateContent({
     model: modelName,
@@ -155,12 +195,18 @@ async function handleGenerateMaterials(ai, modelName, { count }) {
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  return JSON.parse(extractJSON(response.text));
 }
 
 async function handleGenerateMaterialContent(ai, modelName, { material }) {
-  const prompt = `Crie APOSTILA PDF (Markdown) sobre: ${material.title}.
-  Estrutura: Intro, Tópicos, Exemplos, Conclusão.`;
+  // Sem JSON mode aqui, queremos Markdown texto livre
+  const prompt = `Gere o conteúdo completo de uma apostila/artigo sobre: "${material.title}".
+  Use Markdown.
+  Estrutura:
+  - Introdução
+  - Tópicos Principais (Detalhados)
+  - Exemplos
+  - Conclusão`;
   
   const response = await ai.models.generateContent({
     model: modelName,
@@ -172,8 +218,21 @@ async function handleGenerateMaterialContent(ai, modelName, { material }) {
 }
 
 async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subjects }) {
-  const prompt = `Cronograma ${targetExam} (${hours}h). Foco: ${subjects}.
-  JSON: { "weekSchedule": [ { "day": "Segunda", "focus": "Foco", "tasks": [{ "subject": "M", "activity": "A", "duration": "D" }] } ] }`;
+  const prompt = `Crie uma rotina de estudos JSON para ${targetExam} (${hours}h/dia).
+  Foco: ${subjects}.
+  
+  Schema:
+  {
+    "weekSchedule": [
+      {
+        "day": "Segunda-feira",
+        "focus": "Matéria Principal",
+        "tasks": [
+          { "subject": "Matéria", "activity": "Teoria/Questões", "duration": "1h" }
+        ]
+      }
+    ]
+  }`;
 
   const response = await ai.models.generateContent({
     model: modelName,
@@ -181,12 +240,14 @@ async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subject
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  return JSON.parse(extractJSON(response.text));
 }
 
 async function handleUpdateRadar(ai, modelName) {
-  const prompt = `5 concursos BRASIL recentes.
-  Schema: [{"institution":"I","title":"C","forecast":"D","status":"Edital Publicado","salary":"R$","board":"B","url":""}]`;
+  const prompt = `Liste 5 concursos públicos brasileiros em destaque recentemente.
+  JSON Array.
+  Schema:
+  [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
 
   const response = await ai.models.generateContent({
     model: modelName,
@@ -194,20 +255,20 @@ async function handleUpdateRadar(ai, modelName) {
     config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
   });
 
-  return JSON.parse(cleanJSON(response.text));
+  return JSON.parse(extractJSON(response.text));
 }
 
-// --- ROTAS DA API ---
+// --- ROTAS ---
 
 app.post('/api/gemini', async (req, res) => {
   const { action, payload } = req.body;
-  console.log(`[API] Ação: ${action}`);
-
+  
   try {
     const ai = getAI();
     let result;
 
     await runWithModelFallback(ai, async (modelName) => {
+        // console.log(`[Executando] ${action} com ${modelName}`);
         switch (action) {
             case 'generateQuiz': result = await handleGenerateQuiz(ai, modelName, payload); break;
             case 'askTutor': result = await handleAskTutor(ai, modelName, payload); break;
@@ -215,25 +276,25 @@ app.post('/api/gemini', async (req, res) => {
             case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, modelName, payload); break;
             case 'generateRoutine': result = await handleGenerateRoutine(ai, modelName, payload); break;
             case 'updateRadar': result = await handleUpdateRadar(ai, modelName); break;
-            default: throw new Error("Ação desconhecida");
+            default: throw new Error("Ação inválida");
         }
     });
 
     res.json(result);
 
   } catch (error) {
-    console.error(`[API] Erro Final:`, error.message);
+    console.error(`[Erro API] ${action}:`, error.message);
     
-    if (error.message === "API_KEY_MISSING") {
-      return res.status(500).json({ error: "Chave API não configurada." });
+    if (error.message.includes("API_KEY")) {
+      return res.status(500).json({ error: "Chave API inválida ou não configurada." });
+    }
+    
+    // Tratamento genérico para erros de JSON parse (comum em IAs instáveis)
+    if (error instanceof SyntaxError) {
+       return res.status(500).json({ error: "A IA gerou uma resposta inválida. Tente novamente." });
     }
 
-    // Retorna 429 para o frontend saber que é sobrecarga
-    if (error.message.includes("aguarde")) {
-        return res.status(429).json({ error: "Muitas requisições. Aguarde 30s." });
-    }
-    
-    res.status(500).json({ error: "Erro no servidor de IA." });
+    res.status(503).json({ error: "Serviço de IA indisponível. Tente novamente em alguns segundos." });
   }
 });
 
@@ -242,5 +303,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Servidor (V3 Resiliente) na porta ${PORT}`);
+  console.log(`✅ Servidor Universal Bizu rodando na porta ${PORT}`);
 });
