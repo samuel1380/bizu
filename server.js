@@ -11,14 +11,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO) ---
-// O sistema tentará estes modelos em ordem. Se o primeiro falhar (404), tenta o próximo.
-// Isso garante que sua chave funcione independente da versão liberada para ela.
+// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO - ORDEM DE PRIORIDADE) ---
+// ATUALIZADO: Priorizando 1.5-Flash que é o mais compatível (Free Tier e Paid).
+// Adicionados modelos Pro e Legacy (1.0) como backup final.
 const MODEL_FALLBACK_LIST = [
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-1.5-flash",       // O mais estável e rápido atualmente
+  "gemini-1.5-pro",         // Mais inteligente (Backup 1)
+  "gemini-2.0-flash",       // Mais novo/Experimental (Backup 2)
   "gemini-1.5-flash-latest",
-  "gemini-1.5-flash-001"
+  "gemini-1.5-flash-001",
+  "gemini-1.0-pro",         // Legado (Backup Final)
+  "gemini-pro"              // Alias antigo
 ];
 
 // Configurações de segurança permissivas
@@ -55,7 +58,7 @@ async function runWithModelFallback(ai, actionCallback) {
   let lastError = null;
 
   // Se o usuário definiu um modelo específico no Render (AI_MODEL), tenta ele primeiro.
-  // Se não, usa a lista padrão.
+  // Se não, usa a lista padrão expandida.
   const modelsToTry = process.env.AI_MODEL 
     ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
     : MODEL_FALLBACK_LIST;
@@ -76,18 +79,19 @@ async function runWithModelFallback(ai, actionCallback) {
           error.message.includes("not supported")
         )
       ) {
-        console.warn(`⚠️ Modelo ${model} falhou (404/Incompatível). Tentando próximo...`);
+        console.warn(`⚠️ Modelo ${model} falhou ou indisponível para esta chave. Tentando próximo...`);
         lastError = error;
         continue; 
       }
       
-      // Se for outro erro (ex: quota 429, auth 401), lança imediatamente
+      // Se for outro erro (ex: quota 429, auth 401), lança imediatamente para não perder tempo
       throw error;
     }
   }
 
-  // Se todos falharem
-  throw lastError || new Error("Nenhum modelo de IA disponível funcionou com esta chave.");
+  // Se todos falharem, o problema provável é a Chave ou a API não ativada no Google Cloud.
+  console.error("❌ TODOS os modelos falharam. Verifique sua API Key.");
+  throw new Error("Nenhum modelo compatível. Verifique se a 'Generative Language API' está ativada no Google Cloud Console para esta chave.");
 }
 
 // --- LÓGICA DE NEGÓCIO (ADAPTADA PARA RECEBER O NOME DO MODELO) ---
@@ -240,9 +244,13 @@ app.post('/api/gemini', async (req, res) => {
       return res.status(429).json({ error: "Muitas requisições. A IA está ocupada, tente em 30 segundos." });
     }
     
-    // Se chegou aqui, todos os modelos falharam
+    // Erro de modelo agora será pego no loop, se chegar aqui é porque todos falharam ou é outro erro (ex: Auth)
+    if (error.message && (error.message.includes("Generative Language API") || error.message.includes("Nenhum modelo compatível"))) {
+         return res.status(404).json({ error: error.message });
+    }
+    
     if (error.message && (error.message.includes("404") || error.message.includes("not found"))) {
-        return res.status(404).json({ error: "Nenhum modelo de IA compatível foi encontrado para esta chave API." });
+        return res.status(404).json({ error: "Erro de Conexão com IA (Modelo não encontrado ou Chave inválida)." });
     }
 
     res.status(500).json({ error: "Erro interno na IA. Tente novamente." });
@@ -259,7 +267,7 @@ app.listen(PORT, () => {
   if (process.env.API_KEY) {
     const maskedKey = process.env.API_KEY.substring(0, 5) + "...";
     console.log(`🔑 API Key: ${maskedKey} (OK)`);
-    console.log(`🛡️  Sistema de Fallback Ativo: Se um modelo falhar, tentarei outro automaticamente.`);
+    console.log(`🛡️  Modelos disponíveis (ordem de tentativa): ${MODEL_FALLBACK_LIST.join(', ')}`);
   } else {
     console.log(`❌ API Key: NÃO ENCONTRADA`);
   }
