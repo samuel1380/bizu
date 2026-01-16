@@ -68,10 +68,15 @@ const Mentor: React.FC = () => {
 
       const responseText = await askBizuTutor(history, userMsg.text);
 
+      // Proteção contra string vazia
+      const finalText = (responseText && responseText.trim() !== "") 
+        ? responseText 
+        : "⚠️ Não consegui gerar uma resposta para isso. Tente perguntar de outra forma.";
+
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        text: responseText,
+        text: finalText,
         timestamp: new Date()
       };
 
@@ -167,10 +172,10 @@ const Mentor: React.FC = () => {
                         ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
                         ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
                         strong: ({node, ...props}) => <strong className={msg.role === 'user' ? 'text-blue-100' : 'text-slate-800'} {...props} />,
-                        code: ({node, ...props}) => <code className={`px-1 py-0.5 rounded text-xs ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-800'}`} {...props} />
+                        code: ({node, ...props}) => <code className={`px-1 py-0.5 rounded text-xs ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-800'} break-all`} {...props} />
                     }}
                  >
-                    {msg.text}
+                    {msg.text || "..."}
                  </ReactMarkdown>
               </div>
             </div>

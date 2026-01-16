@@ -11,15 +11,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- LISTA DE MODELOS (PRIORIDADE GEMINI 3 FLASH PARA VELOCIDADE) ---
+// --- LISTA DE MODELOS (ORDEM DE EFICIÊNCIA) ---
+// O Gemini 1.5 Flash costuma ter limites maiores no tier gratuito que o 3.0 Preview.
+// Reorganizei para tentar manter qualidade x estabilidade.
 const MODEL_FALLBACK_LIST = [
-  "gemini-3-flash-preview",   // Mais rápido e eficiente
-  "gemini-3-pro-preview",     // Backup inteligente
-  "gemini-2.0-flash",         // Backup estável
-  "gemini-1.5-flash"          // Legado rápido
+  "gemini-3-flash-preview",    // Mais rápido (Prioridade)
+  "gemini-2.0-flash",          // Muito estável
+  "gemini-1.5-flash-latest",   // Fallback robusto (nome corrigido)
+  "gemini-1.5-pro-latest"      // Último recurso (mais lento, mas potente)
 ];
 
-// Configurações de segurança permissivas para evitar bloqueios falsos
+// Configurações de segurança
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -36,7 +38,6 @@ app.use(express.static(join(__dirname, 'dist')));
 
 function cleanJSON(text) {
   if (!text) return "{}";
-  // Remove blocos de código e espaços extras para garantir parseamento rápido
   return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
 }
 
@@ -49,10 +50,11 @@ function getAI() {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
-// --- FUNÇÃO "BLINDADA" DE EXECUÇÃO ---
+// --- FUNÇÃO "BLINDADA" DE EXECUÇÃO COM RETRY INTELIGENTE ---
 async function runWithModelFallback(ai, actionCallback) {
   let lastError = null;
 
+  // Se o usuário definiu modelo fixo, usa ele. Se não, usa a lista.
   const modelsToTry = process.env.AI_MODEL 
     ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
     : MODEL_FALLBACK_LIST;
@@ -60,37 +62,50 @@ async function runWithModelFallback(ai, actionCallback) {
   const uniqueModels = [...new Set(modelsToTry)];
 
   for (const model of uniqueModels) {
-    try {
-      return await actionCallback(model);
-    } catch (error) {
-      const errorMessage = error.message || "";
-      
-      if (errorMessage.includes("404") || errorMessage.includes("not found")) {
-        console.warn(`⚠️ Modelo ${model} off. Next...`);
-        lastError = error;
-        continue; 
-      }
+    // Tenta cada modelo até 2 vezes se for erro de taxa (429)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            // console.log(`Tentando ${model} (Tentativa ${attempt})...`);
+            return await actionCallback(model);
+        } catch (error) {
+            const errorMessage = error.message || "";
+            lastError = error;
 
-      if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-        console.warn(`⚠️ Modelo ${model} ocupado (429). Aguardando 1s...`);
-        await sleep(1000); // Delay menor para tentar manter agilidade
-        lastError = error;
-        continue;
-      }
-      
-      throw error;
+            // 1. Erro de Modelo não encontrado (404) -> Pula para o próximo modelo imediatamente
+            if (errorMessage.includes("404") || errorMessage.includes("not found")) {
+                console.warn(`⚠️ Modelo ${model} indisponível (404). Pulando...`);
+                break; // Sai do loop de tentativas e vai para o próximo modelo
+            }
+
+            // 2. Erro de Cota/Sobrecarga (429 ou 503)
+            if (errorMessage.includes("429") || errorMessage.includes("Quota") || errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("503")) {
+                // Se for a primeira tentativa, espera e tenta de novo o MESMO modelo
+                if (attempt === 1) {
+                    console.warn(`⏳ Cota excedida no ${model}. Esfriando por 5 segundos...`);
+                    await sleep(5000); // 5 segundos de espera (Crucial para Free Tier)
+                    continue; // Tenta de novo
+                } else {
+                    // Se falhou na segunda, espera um pouco e vai para o PRÓXIMO modelo
+                    console.warn(`⚠️ ${model} falhou 2x. Trocando de modelo...`);
+                    await sleep(2000); 
+                    break;
+                }
+            }
+            
+            // Outros erros (JSON inválido, Safety, etc) -> Lança erro
+            throw error;
+        }
     }
   }
 
-  console.error("❌ Todos os modelos falharam.");
-  throw new Error("Serviço de IA instável no momento. Tente novamente em instantes.");
+  console.error("❌ Esgotadas todas as tentativas de modelos.");
+  throw new Error("Sistema sobrecarregado. Por favor, aguarde 30 segundos antes de tentar novamente.");
 }
 
 // --- LÓGICA DE NEGÓCIO OTIMIZADA ---
 
 async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
-  // Prompt encurtado para resposta rápida
-  const prompt = `Gere JSON com ${numberOfQuestions} questões de concurso: "${topic}" (${difficulty}).
+  const prompt = `Gere JSON com ${numberOfQuestions} questões: "${topic}" (${difficulty}).
   Schema: [{"id":"uuid","text":"P","options":["A","B","C","D","E"],"correctAnswerIndex":0,"explanation":"E"}]`;
   
   const response = await ai.models.generateContent({
@@ -103,26 +118,35 @@ async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQu
 }
 
 async function handleAskTutor(ai, modelName, { history, message }) {
-  const limitedHistory = (history || []).slice(-4); // Histórico menor = menos tokens = mais rápido
+  // OTIMIZAÇÃO CRÍTICA: Reduzir histórico para economizar tokens e evitar 429
+  // Envia apenas as últimas 2 interações (User + Bot) + a mensagem atual
+  const limitedHistory = (history || []).slice(-2); 
   
   const chat = ai.chats.create({
     model: modelName,
     history: limitedHistory,
     config: {
-      systemInstruction: "Seja o BizuBot. Respostas curtas, diretas e motivadoras. Use Markdown.",
+      systemInstruction: "Seja o BizuBot. Responda em Markdown. Seja curto e útil.",
       safetySettings: SAFETY_SETTINGS
     }
   });
   
   const result = await chat.sendMessage({ message });
-  return { text: result.text };
+  
+  const responseText = result.text;
+  
+  if (!responseText || responseText.trim().length === 0) {
+      if (result.candidates && result.candidates.length > 0 && result.candidates[0].finishReason !== 'STOP') {
+         return { text: "⚠️ Resposta bloqueada por segurança. Tente reformular." };
+      }
+      return { text: "⚠️ Ocorreu um erro silencioso na IA. Tente novamente." };
+  }
+
+  return { text: responseText };
 }
 
 async function handleGenerateMaterials(ai, modelName, { count }) {
-  // PROMPT ALTERADO: Apenas PDF e ARTICLE. Proibido VIDEO.
-  const prompt = `Liste ${count} materiais de estudo técnicos sobre concursos.
-  TIPOS PERMITIDOS: "PDF" (Apostilas/Guias) ou "ARTICLE" (Resumos Teóricos).
-  NÃO GERE VÍDEOS.
+  const prompt = `Liste ${count} materiais (PDF/ARTICLE) sobre concursos. Sem vídeos.
   Schema: [{"title":"T","category":"C","type":"PDF","duration":"15 pág","summary":"S"}]`;
 
   const response = await ai.models.generateContent({
@@ -135,17 +159,8 @@ async function handleGenerateMaterials(ai, modelName, { count }) {
 }
 
 async function handleGenerateMaterialContent(ai, modelName, { material }) {
-  // PROMPT ALTERADO: Gera estrutura de documento PDF
-  const prompt = `Escreva uma APOSTILA COMPLETA E DETALHADA sobre: ${material.title}.
-  Formato: Markdown bem estruturado.
-  Estrutura obrigatória:
-  1. Título e Introdução
-  2. Conceitos Chave (Use tópicos e negrito)
-  3. Aprofundamento Teórico (Texto denso e explicativo)
-  4. Exemplos Práticos ou Jurisprudência
-  5. Conclusão/Resumo
-  
-  O tom deve ser formal e educativo, pronto para ser impresso como PDF.`;
+  const prompt = `Crie APOSTILA PDF (Markdown) sobre: ${material.title}.
+  Estrutura: Intro, Tópicos, Exemplos, Conclusão.`;
   
   const response = await ai.models.generateContent({
     model: modelName,
@@ -157,12 +172,8 @@ async function handleGenerateMaterialContent(ai, modelName, { material }) {
 }
 
 async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subjects }) {
-  // Prompt simplificado para evitar erro de JSON aninhado complexo
-  const prompt = `Crie cronograma para ${targetExam} (${hours}h/dia). Foco: ${subjects}.
-  Retorne JSON estrito:
-  { "weekSchedule": [ 
-    { "day": "Segunda", "focus": "Foco do dia", "tasks": [{ "subject": "Matéria", "activity": "Teoria/Questões", "duration": "tempo" }] } 
-  ] }`;
+  const prompt = `Cronograma ${targetExam} (${hours}h). Foco: ${subjects}.
+  JSON: { "weekSchedule": [ { "day": "Segunda", "focus": "Foco", "tasks": [{ "subject": "M", "activity": "A", "duration": "D" }] } ] }`;
 
   const response = await ai.models.generateContent({
     model: modelName,
@@ -174,8 +185,8 @@ async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subject
 }
 
 async function handleUpdateRadar(ai, modelName) {
-  const prompt = `5 concursos públicos BRASIL previstos/abertos recentes.
-  Schema: [{"institution":"I","title":"Cargo","forecast":"Data","status":"Edital Publicado","salary":"R$","board":"Banca","url":""}]`;
+  const prompt = `5 concursos BRASIL recentes.
+  Schema: [{"institution":"I","title":"C","forecast":"D","status":"Edital Publicado","salary":"R$","board":"B","url":""}]`;
 
   const response = await ai.models.generateContent({
     model: modelName,
@@ -190,7 +201,7 @@ async function handleUpdateRadar(ai, modelName) {
 
 app.post('/api/gemini', async (req, res) => {
   const { action, payload } = req.body;
-  console.log(`[API] Ação rápida: ${action}`);
+  console.log(`[API] Ação: ${action}`);
 
   try {
     const ai = getAI();
@@ -211,13 +222,18 @@ app.post('/api/gemini', async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    console.error(`[API] Erro:`, error.message);
+    console.error(`[API] Erro Final:`, error.message);
     
     if (error.message === "API_KEY_MISSING") {
-      return res.status(500).json({ error: "Configuração de API inválida." });
+      return res.status(500).json({ error: "Chave API não configurada." });
+    }
+
+    // Retorna 429 para o frontend saber que é sobrecarga
+    if (error.message.includes("aguarde")) {
+        return res.status(429).json({ error: "Muitas requisições. Aguarde 30s." });
     }
     
-    res.status(500).json({ error: "Instabilidade momentânea na IA. Tente novamente." });
+    res.status(500).json({ error: "Erro no servidor de IA." });
   }
 });
 
@@ -226,5 +242,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Servidor Otimizado (Gemini 3 Flash) na porta ${PORT}`);
+  console.log(`✅ Servidor (V3 Resiliente) na porta ${PORT}`);
 });
