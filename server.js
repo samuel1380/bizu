@@ -11,13 +11,14 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO) ---
-// LISTA LIMPA: Usando apenas os aliases estáveis para evitar erro 404.
-// O gemini-1.5-flash é o padrão ouro atual (rápido e estável).
+// --- LISTA DE MODELOS (PRIORIDADE GEMINI 3) ---
+// Atualizado para usar os modelos mais recentes solicitados.
 const MODEL_FALLBACK_LIST = [
-  "gemini-1.5-flash", 
-  "gemini-1.5-pro",
-  "gemini-1.0-pro" // Último recurso (modelo antigo mas muito estável)
+  "gemini-3-flash-preview",   // Prioridade 1: Solicitado (Mais rápido/eficiente)
+  "gemini-3-pro-preview",     // Prioridade 2: Maior capacidade de raciocínio
+  "gemini-2.0-flash-exp",     // Fallback: Versão experimental recente
+  "gemini-2.0-flash",         // Fallback: Versão Flash 2.0
+  "gemini-flash-latest"       // Fallback: Alias genérico do Google (aponta para o mais estável)
 ];
 
 // Configurações de segurança permissivas
@@ -54,7 +55,7 @@ function getAI() {
 async function runWithModelFallback(ai, actionCallback) {
   let lastError = null;
 
-  // Se o usuário definiu AI_MODEL, usa ele + a lista de fallback.
+  // Se o usuário definiu AI_MODEL manualmente, tenta ele primeiro.
   const modelsToTry = process.env.AI_MODEL 
     ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
     : MODEL_FALLBACK_LIST;
@@ -63,27 +64,27 @@ async function runWithModelFallback(ai, actionCallback) {
 
   for (const model of uniqueModels) {
     try {
+      // console.log(`Tentando modelo: ${model}...`); 
       return await actionCallback(model);
     } catch (error) {
       const errorMessage = error.message || "";
       
       // 1. Erro de Modelo não encontrado (404)
       if (errorMessage.includes("404") || errorMessage.includes("not found")) {
-        console.warn(`⚠️ Modelo ${model} não encontrado. Tentando próximo...`);
+        console.warn(`⚠️ Modelo ${model} não disponível. Tentando próximo...`);
         lastError = error;
         continue; 
       }
 
       // 2. Erro de Limite de Cota (429 - Resource Exhausted)
       if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-        console.warn(`⚠️ Modelo ${model} atingiu o limite (429). Aguardando 2s para tentar backup...`);
-        // Pausa dramática para a API respirar
+        console.warn(`⚠️ Modelo ${model} ocupado (429). Aguardando 2s...`);
         await sleep(2000); 
         lastError = error;
         continue;
       }
       
-      // Outros erros (ex: Auth), lança direto
+      // Outros erros, lança direto
       throw error;
     }
   }
@@ -95,7 +96,7 @@ async function runWithModelFallback(ai, actionCallback) {
     throw new Error("O servidor da IA está sobrecarregado (Muitas requisições). Aguarde 30 segundos e tente novamente.");
   }
   
-  throw new Error("Não foi possível processar sua solicitação com nenhum modelo de IA disponível.");
+  throw new Error(`Não foi possível conectar aos modelos Gemini 3 ou anteriores. Detalhe: ${lastError?.message}`);
 }
 
 // --- LÓGICA DE NEGÓCIO ---
@@ -123,7 +124,7 @@ async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQu
 }
 
 async function handleAskTutor(ai, modelName, { history, message }) {
-  // Reduzi o histórico para economizar tokens e evitar erro 429
+  // Mantém histórico curto para evitar estouro de tokens
   const limitedHistory = (history || []).slice(-5);
   
   const chat = ai.chats.create({
@@ -231,9 +232,8 @@ app.post('/api/gemini', async (req, res) => {
       return res.status(500).json({ error: "ERRO DE CONFIGURAÇÃO: Chave de API não encontrada." });
     }
     
-    // Tratamento amigável para o usuário no Frontend
     if (error.message.includes("servidor da IA está sobrecarregado")) {
-      return res.status(429).json({ error: "Muitas pessoas usando a IA agora. Aguarde 30s e tente novamente." });
+      return res.status(429).json({ error: "Servidores ocupados. Aguarde alguns segundos." });
     }
 
     res.status(500).json({ error: error.message || "Erro interno na IA." });
@@ -246,5 +246,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✅ SERVIDOR ONLINE NA PORTA ${PORT}`);
-  console.log(`🛡️  Modelos Ativos: ${MODEL_FALLBACK_LIST.join(', ')}`);
+  console.log(`🛡️  Modelos Gemini 3 Ativados: ${MODEL_FALLBACK_LIST.join(', ')}`);
 });
