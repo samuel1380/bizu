@@ -11,17 +11,13 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO - ORDEM DE PRIORIDADE) ---
-// ATUALIZADO: Priorizando 1.5-Flash que é o mais compatível (Free Tier e Paid).
-// Adicionados modelos Pro e Legacy (1.0) como backup final.
+// --- LISTA DE MODELOS (FALLBACK AUTOMÁTICO) ---
+// LISTA LIMPA: Usando apenas os aliases estáveis para evitar erro 404.
+// O gemini-1.5-flash é o padrão ouro atual (rápido e estável).
 const MODEL_FALLBACK_LIST = [
-  "gemini-1.5-flash",       // O mais estável e rápido atualmente
-  "gemini-1.5-pro",         // Mais inteligente (Backup 1)
-  "gemini-2.0-flash",       // Mais novo/Experimental (Backup 2)
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-flash-001",
-  "gemini-1.0-pro",         // Legado (Backup Final)
-  "gemini-pro"              // Alias antigo
+  "gemini-1.5-flash", 
+  "gemini-1.5-pro",
+  "gemini-1.0-pro" // Último recurso (modelo antigo mas muito estável)
 ];
 
 // Configurações de segurança permissivas
@@ -44,7 +40,9 @@ function cleanJSON(text) {
   return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
 }
 
-// Inicializa a IA com a chave do ambiente (Sempre lê a variável atual)
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Inicializa a IA com a chave do ambiente
 function getAI() {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY_MISSING");
@@ -53,48 +51,54 @@ function getAI() {
 }
 
 // --- FUNÇÃO "BLINDADA" DE EXECUÇÃO ---
-// Tenta executar a ação com o modelo preferido. Se der erro de modelo (404), tenta o próximo.
 async function runWithModelFallback(ai, actionCallback) {
   let lastError = null;
 
-  // Se o usuário definiu um modelo específico no Render (AI_MODEL), tenta ele primeiro.
-  // Se não, usa a lista padrão expandida.
+  // Se o usuário definiu AI_MODEL, usa ele + a lista de fallback.
   const modelsToTry = process.env.AI_MODEL 
     ? [process.env.AI_MODEL, ...MODEL_FALLBACK_LIST] 
     : MODEL_FALLBACK_LIST;
 
-  // Remove duplicatas
   const uniqueModels = [...new Set(modelsToTry)];
 
   for (const model of uniqueModels) {
     try {
-      // console.log(`Tentando modelo: ${model}...`); // Debug (opcional)
       return await actionCallback(model);
     } catch (error) {
-      // Se o erro for "Not Found" (404) ou problema de versão do modelo, continua para o próximo
-      if (
-        error.message && (
-          error.message.includes("404") || 
-          error.message.includes("not found") || 
-          error.message.includes("not supported")
-        )
-      ) {
-        console.warn(`⚠️ Modelo ${model} falhou ou indisponível para esta chave. Tentando próximo...`);
+      const errorMessage = error.message || "";
+      
+      // 1. Erro de Modelo não encontrado (404)
+      if (errorMessage.includes("404") || errorMessage.includes("not found")) {
+        console.warn(`⚠️ Modelo ${model} não encontrado. Tentando próximo...`);
         lastError = error;
         continue; 
       }
+
+      // 2. Erro de Limite de Cota (429 - Resource Exhausted)
+      if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+        console.warn(`⚠️ Modelo ${model} atingiu o limite (429). Aguardando 2s para tentar backup...`);
+        // Pausa dramática para a API respirar
+        await sleep(2000); 
+        lastError = error;
+        continue;
+      }
       
-      // Se for outro erro (ex: quota 429, auth 401), lança imediatamente para não perder tempo
+      // Outros erros (ex: Auth), lança direto
       throw error;
     }
   }
 
-  // Se todos falharem, o problema provável é a Chave ou a API não ativada no Google Cloud.
-  console.error("❌ TODOS os modelos falharam. Verifique sua API Key.");
-  throw new Error("Nenhum modelo compatível. Verifique se a 'Generative Language API' está ativada no Google Cloud Console para esta chave.");
+  // Se chegou aqui, falhou em todos
+  console.error("❌ Todos os modelos falharam.");
+  
+  if (lastError && lastError.message.includes("429")) {
+    throw new Error("O servidor da IA está sobrecarregado (Muitas requisições). Aguarde 30 segundos e tente novamente.");
+  }
+  
+  throw new Error("Não foi possível processar sua solicitação com nenhum modelo de IA disponível.");
 }
 
-// --- LÓGICA DE NEGÓCIO (ADAPTADA PARA RECEBER O NOME DO MODELO) ---
+// --- LÓGICA DE NEGÓCIO ---
 
 async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
   const prompt = `Gere um JSON array com ${numberOfQuestions} questões de concurso sobre "${topic}" (Nível: ${difficulty}).
@@ -119,7 +123,8 @@ async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQu
 }
 
 async function handleAskTutor(ai, modelName, { history, message }) {
-  const limitedHistory = (history || []).slice(-10);
+  // Reduzi o histórico para economizar tokens e evitar erro 429
+  const limitedHistory = (history || []).slice(-5);
   
   const chat = ai.chats.create({
     model: modelName,
@@ -205,55 +210,33 @@ app.post('/api/gemini', async (req, res) => {
     const ai = getAI();
     let result;
 
-    // Executa usando o sistema de fallback (tenta vários modelos se necessário)
     await runWithModelFallback(ai, async (modelName) => {
         switch (action) {
-            case 'generateQuiz': 
-                result = await handleGenerateQuiz(ai, modelName, payload); 
-                break;
-            case 'askTutor': 
-                result = await handleAskTutor(ai, modelName, payload); 
-                break;
-            case 'generateMaterials': 
-                result = await handleGenerateMaterials(ai, modelName, payload); 
-                break;
-            case 'generateMaterialContent': 
-                result = await handleGenerateMaterialContent(ai, modelName, payload); 
-                break;
-            case 'generateRoutine': 
-                result = await handleGenerateRoutine(ai, modelName, payload); 
-                break;
-            case 'updateRadar': 
-                result = await handleUpdateRadar(ai, modelName); 
-                break;
-            default: 
-                throw new Error("Ação desconhecida");
+            case 'generateQuiz': result = await handleGenerateQuiz(ai, modelName, payload); break;
+            case 'askTutor': result = await handleAskTutor(ai, modelName, payload); break;
+            case 'generateMaterials': result = await handleGenerateMaterials(ai, modelName, payload); break;
+            case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, modelName, payload); break;
+            case 'generateRoutine': result = await handleGenerateRoutine(ai, modelName, payload); break;
+            case 'updateRadar': result = await handleUpdateRadar(ai, modelName); break;
+            default: throw new Error("Ação desconhecida");
         }
     });
 
     res.json(result);
 
   } catch (error) {
-    console.error(`[API] Erro CRÍTICO em ${action}:`, error);
+    console.error(`[API] Erro Final:`, error.message);
     
     if (error.message === "API_KEY_MISSING") {
-      return res.status(500).json({ error: "ERRO DE CONFIGURAÇÃO: Chave de API não encontrada no servidor." });
+      return res.status(500).json({ error: "ERRO DE CONFIGURAÇÃO: Chave de API não encontrada." });
     }
     
-    if (error.message && error.message.includes("429")) {
-      return res.status(429).json({ error: "Muitas requisições. A IA está ocupada, tente em 30 segundos." });
-    }
-    
-    // Erro de modelo agora será pego no loop, se chegar aqui é porque todos falharam ou é outro erro (ex: Auth)
-    if (error.message && (error.message.includes("Generative Language API") || error.message.includes("Nenhum modelo compatível"))) {
-         return res.status(404).json({ error: error.message });
-    }
-    
-    if (error.message && (error.message.includes("404") || error.message.includes("not found"))) {
-        return res.status(404).json({ error: "Erro de Conexão com IA (Modelo não encontrado ou Chave inválida)." });
+    // Tratamento amigável para o usuário no Frontend
+    if (error.message.includes("servidor da IA está sobrecarregado")) {
+      return res.status(429).json({ error: "Muitas pessoas usando a IA agora. Aguarde 30s e tente novamente." });
     }
 
-    res.status(500).json({ error: "Erro interno na IA. Tente novamente." });
+    res.status(500).json({ error: error.message || "Erro interno na IA." });
   }
 });
 
@@ -263,12 +246,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✅ SERVIDOR ONLINE NA PORTA ${PORT}`);
-  
-  if (process.env.API_KEY) {
-    const maskedKey = process.env.API_KEY.substring(0, 5) + "...";
-    console.log(`🔑 API Key: ${maskedKey} (OK)`);
-    console.log(`🛡️  Modelos disponíveis (ordem de tentativa): ${MODEL_FALLBACK_LIST.join(', ')}`);
-  } else {
-    console.log(`❌ API Key: NÃO ENCONTRADA`);
-  }
+  console.log(`🛡️  Modelos Ativos: ${MODEL_FALLBACK_LIST.join(', ')}`);
 });
