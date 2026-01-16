@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
 import { generateStudyMaterials, generateMaterialContent } from '../services/gemini';
 import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
-import { FileText, PlayCircle, Book, Search, Filter, Loader2, Plus, Sparkles, X, ChevronRight, Wand2 } from 'lucide-react';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const Materials: React.FC = () => {
@@ -77,6 +77,11 @@ const Materials: React.FC = () => {
     }
   };
 
+  const handlePrintPDF = () => {
+    // Abre a caixa de diálogo de impressão do navegador para salvar como PDF
+    window.print();
+  };
+
   const categories = ['Todos', ...Array.from(new Set(materials.map(m => m.category)))];
 
   const filteredMaterials = materials.filter(m => {
@@ -89,29 +94,30 @@ const Materials: React.FC = () => {
   const getIcon = (type: StudyMaterial['type']) => {
     switch (type) {
       case 'PDF': return <FileText size={24} className="text-red-500" strokeWidth={2.5} />;
-      case 'VIDEO': return <PlayCircle size={24} className="text-blue-500" strokeWidth={2.5} />;
-      case 'ARTICLE': return <Book size={24} className="text-green-500" strokeWidth={2.5} />;
+      case 'ARTICLE': return <Book size={24} className="text-blue-500" strokeWidth={2.5} />;
       default: return <FileText size={24} className="text-slate-500" strokeWidth={2.5} />;
     }
   };
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative print:hidden">
+      {/* Esconde a interface principal na hora de imprimir, mostrando apenas o modal */}
+      
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-700">Biblioteca</h1>
-          <p className="text-slate-400 font-bold">Conteúdo infinito gerado para você.</p>
+          <h1 className="text-3xl font-extrabold text-slate-700">Apostilas & Resumos</h1>
+          <p className="text-slate-400 font-bold">PDFs e Artigos gerados via IA.</p>
         </div>
         
         <button 
           onClick={handleGenerateMore} 
           disabled={generating}
-          className="bg-blue-600 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-wider hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          className="bg-blue-600 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-wider hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg"
         >
             {generating ? (
-              <>CRIANDO <Loader2 size={18} className="animate-spin" /></>
+              <>CRIANDO... <Loader2 size={18} className="animate-spin" /></>
             ) : (
-              <>+ NOVO MATERIAL</>
+              <>+ GERAR MATERIAL</>
             )}
         </button>
       </div>
@@ -122,7 +128,7 @@ const Materials: React.FC = () => {
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} strokeWidth={3} />
           <input
             type="text"
-            placeholder="BUSCAR..."
+            placeholder="Buscar material..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-transparent bg-slate-100 focus:bg-white focus:border-blue-400 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-bold"
@@ -149,7 +155,7 @@ const Materials: React.FC = () => {
       {loading && materials.length === 0 ? (
         <div className="text-center py-20">
              <Loader2 size={48} className="animate-spin text-blue-400 mx-auto mb-4" />
-             <p className="text-slate-400 font-bold">CARREGANDO...</p>
+             <p className="text-slate-400 font-bold">GERANDO BIBLIOTECA...</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -157,15 +163,14 @@ const Materials: React.FC = () => {
             <div 
               key={material.id} 
               onClick={() => handleOpenMaterial(material)}
-              className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 p-5 cursor-pointer hover:bg-slate-50 active:border-b-2 active:translate-y-[2px] transition-all group flex flex-col h-full"
+              className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 p-5 cursor-pointer hover:bg-slate-50 active:border-b-2 active:translate-y-[2px] transition-all group flex flex-col h-full shadow-sm hover:shadow-md"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 bg-slate-100 rounded-xl">
                   {getIcon(material.type)}
                 </div>
                 <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wide ${
-                   material.type === 'VIDEO' ? 'bg-blue-100 text-blue-500' : 
-                   material.type === 'PDF' ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'
+                   material.type === 'PDF' ? 'bg-red-100 text-red-500' : 'bg-blue-100 text-blue-500'
                 }`}>
                   {material.type}
                 </span>
@@ -183,18 +188,20 @@ const Materials: React.FC = () => {
               
               <div className="flex items-center justify-between mt-auto pt-4 border-t-2 border-slate-100">
                 <span className="text-xs font-bold text-slate-400 uppercase">{material.category}</span>
+                <span className="text-xs font-bold text-slate-400">{material.duration || '5 pág'}</span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal - Document Viewer */}
       {selectedMaterial && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border-b-8 border-slate-300">
-            {/* Header */}
-            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 bg-white">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:bg-white print:static print:p-0">
+          <div className="bg-white rounded-none md:rounded-3xl w-full max-w-4xl h-full md:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 md:border-b-8 md:border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none">
+            
+            {/* Header (Hidden on Print) */}
+            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 bg-white print:hidden">
               <div className="pr-8">
                 <h2 className="text-2xl font-black text-slate-700 leading-tight">{selectedMaterial.title}</h2>
                 <div className="flex gap-2 mt-2">
@@ -206,39 +213,55 @@ const Materials: React.FC = () => {
                      </span>
                 </div>
               </div>
-              <button 
-                onClick={handleCloseModal}
-                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors"
-              >
-                <X size={28} strokeWidth={3} />
-              </button>
+              <div className="flex items-center gap-2">
+                 {selectedMaterial.content && (
+                    <button 
+                        onClick={handlePrintPDF}
+                        className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors hidden md:block"
+                        title="Salvar como PDF / Imprimir"
+                    >
+                        <Printer size={24} strokeWidth={2.5} />
+                    </button>
+                 )}
+                 <button 
+                    onClick={handleCloseModal}
+                    className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-colors"
+                 >
+                    <X size={28} strokeWidth={3} />
+                 </button>
+              </div>
             </div>
 
-            {/* Content */}
-            <div className="flex-grow overflow-y-auto p-8 bg-slate-50">
+            {/* Content Area */}
+            <div className="flex-grow overflow-y-auto p-4 md:p-12 bg-slate-50 print:bg-white print:p-0 print:overflow-visible">
               {selectedMaterial.content ? (
-                <div className="prose prose-slate max-w-none bg-white p-8 rounded-2xl border-2 border-slate-200">
+                <div className="prose prose-slate prose-lg max-w-none bg-white p-8 md:p-12 rounded-2xl border-2 border-slate-200 print:border-none print:shadow-none print:p-0">
+                   {/* Cabeçalho visível apenas no print para dar contexto */}
+                   <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
+                        <h1 className="text-3xl font-black">{selectedMaterial.title}</h1>
+                        <p className="text-slate-600">Material gerado pelo Bizu App</p>
+                   </div>
                    <ReactMarkdown>{selectedMaterial.content}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="flex flex-col items-center justify-center py-20 text-center print:hidden">
                    <div className="mb-6 text-slate-300">
                       <Sparkles size={64} />
                    </div>
-                   <h3 className="text-2xl font-black text-slate-700 mb-2">Vamos criar essa aula?</h3>
+                   <h3 className="text-2xl font-black text-slate-700 mb-2">Apostila ainda não criada</h3>
                    <p className="text-slate-400 font-bold mb-8 max-w-md">
-                     O BizuBot vai escrever todo o conteúdo didático para você agora.
+                     O BizuBot vai escrever uma apostila completa em PDF sobre este tema agora.
                    </p>
 
                    <button
                     onClick={handleGenerateContent}
                     disabled={generatingContent}
-                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-widest hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-widest hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-xl"
                    >
                      {generatingContent ? (
-                        <>ESCREVENDO... <Loader2 className="animate-spin" /></>
+                        <>ESCREVENDO APOSTILA... <Loader2 className="animate-spin" /></>
                      ) : (
-                        <>GERAR CONTEÚDO AGORA</>
+                        <>CRIAR APOSTILA AGORA</>
                      )}
                    </button>
                 </div>
@@ -247,6 +270,31 @@ const Materials: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* Estilos Globais de Impressão */}
+      <style>{`
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .fixed.inset-0, .fixed.inset-0 * {
+                visibility: visible;
+            }
+            .fixed.inset-0 {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: white;
+                padding: 0;
+            }
+            /* Esconde botões na impressão */
+            button, .print\\:hidden {
+                display: none !important;
+            }
+        }
+      `}</style>
     </div>
   );
 };
