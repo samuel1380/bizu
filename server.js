@@ -27,10 +27,10 @@ const MODEL_FALLBACK_LIST = [
 
 const OPENROUTER_MODELS = [
   "google/gemini-2.0-flash-001",
-  "google/gemini-2.0-flash-lite-preview-02-05:free",
-  "google/gemini-pro-1.5",
+  "openai/gpt-4o-mini",
   "google/gemini-flash-1.5",
-  "google/gemini-2.0-pro-exp-02-05:free"
+  "meta-llama/llama-3.1-8b-instruct",
+  "anthropic/claude-3-haiku"
 ];
 
 const SAFETY_SETTINGS = [
@@ -82,8 +82,11 @@ function getAI() {
     throw new Error("API_KEY_MISSING");
   }
   
+  const provider = process.env.AI_PROVIDER?.toLowerCase();
+  const isOpenRouter = provider === 'openrouter' || process.env.AI_BASE_URL || key.startsWith('sk-or-v1-');
+
   // Se for OpenRouter ou tiver BASE_URL, retornamos um objeto especial para ser tratado no executor
-  if (process.env.AI_BASE_URL || key.startsWith('sk-or-v1-')) {
+  if (isOpenRouter) {
     return {
       isOpenRouter: true,
       apiKey: key,
@@ -126,19 +129,38 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
     const rawText = await response.text();
     
     if (!response.ok) {
-      const errorData = JSON.parse(rawText || "{}");
-      const msg = errorData.error?.message || rawText;
-      
-      // Se for erro de rate limit, lançamos um erro específico para o fallback capturar
-      if (response.status === 429) {
-        throw new Error(`RATE_LIMIT:${msg}`);
+      let errorMsg = rawText;
+      try {
+        const errorData = JSON.parse(rawText || "{}");
+        errorMsg = errorData.error?.message || rawText;
+      } catch (e) {
+        // Se não for JSON, usa o rawText
       }
       
-      throw new Error(msg);
+      if (response.status === 429) {
+        throw new Error(`RATE_LIMIT:${errorMsg}`);
+      }
+      
+      throw new Error(errorMsg || `Erro OpenRouter: ${response.status}`);
     }
 
-    const data = JSON.parse(rawText);
-    return { text: data.choices[0].message.content };
+    if (!rawText || rawText.trim() === "") {
+      throw new Error("Resposta vazia do OpenRouter");
+    }
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.error("[OpenRouter] Falha ao parsear resposta:", rawText);
+      throw new Error("Resposta inválida do OpenRouter (JSON corrompido)");
+    }
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error("Formato de resposta inesperado do OpenRouter");
+    }
+
+    return { text: data.choices[0].message.content || "" };
   } catch (error) {
     throw error;
   }
