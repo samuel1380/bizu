@@ -69,15 +69,110 @@ function extractJSON(text) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 function getAI() {
-  if (!process.env.API_KEY) {
+  const key = process.env.API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!key) {
     throw new Error("API_KEY_MISSING");
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Se for OpenRouter ou tiver BASE_URL, retornamos um objeto especial para ser tratado no executor
+  if (process.env.AI_BASE_URL || key.startsWith('sk-or-v1-')) {
+    return {
+      isOpenRouter: true,
+      apiKey: key,
+      baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
+      model: process.env.AI_MODEL || 'google/gemini-2.0-flash-exp:free'
+    };
+  }
+
+  return new GoogleGenAI({ apiKey: key });
+}
+
+// --- CHAMADA OPENROUTER (FALLBACK) ---
+async function callOpenRouter(config, prompt, isJson = false, history = null) {
+  const headers = {
+    "Authorization": `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://bizu.app", // Opcional para OpenRouter
+    "X-Title": "Bizu App"
+  };
+
+  const messages = history ? [...history] : [];
+  if (prompt) {
+    messages.push({ role: "user", content: prompt });
+  }
+
+  const body = {
+    model: config.model,
+    messages: messages,
+    response_format: isJson ? { type: "json_object" } : undefined
+  };
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: headers,
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message || `Erro OpenRouter: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return {
+    text: data.choices[0].message.content
+  };
 }
 
 // --- EXECUTOR UNIVERSAL ---
-async function runWithModelFallback(ai, actionCallback) {
-  // Se o usuário forçar um modelo via variável de ambiente, tentamos ele PRIMEIRO e com insistência.
+async function runWithModelFallback(ai, actionCallback, actionName, payload) {
+  // Se for OpenRouter, usamos a lógica simplificada de fetch
+  if (ai.isOpenRouter) {
+    console.log(`[OpenRouter] Executando ${actionName} com ${ai.model}`);
+    
+    // Mapeamento de ações para OpenRouter
+    if (actionName === 'generateQuiz') {
+      const prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+      const res = await callOpenRouter(ai, prompt, true);
+      return JSON.parse(extractJSON(res.text));
+    }
+    
+    if (actionName === 'askTutor') {
+      const history = (payload.history || []).map(m => ({
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: m.parts[0].text
+      }));
+      return await callOpenRouter(ai, payload.message, false, history);
+    }
+
+    if (actionName === 'generateMaterials') {
+      const prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
+      const res = await callOpenRouter(ai, prompt, true);
+      return JSON.parse(extractJSON(res.text));
+    }
+
+    if (actionName === 'generateMaterialContent') {
+      const prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
+      const res = await callOpenRouter(ai, prompt, false);
+      return { content: res.text };
+    }
+
+    if (actionName === 'generateRoutine') {
+      const prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
+      const res = await callOpenRouter(ai, prompt, true);
+      return JSON.parse(extractJSON(res.text));
+    }
+
+    if (actionName === 'updateRadar') {
+      const prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
+      const res = await callOpenRouter(ai, prompt, true);
+      return JSON.parse(extractJSON(res.text));
+    }
+
+    throw new Error(`Ação ${actionName} não implementada para OpenRouter`);
+  }
+
+  // Lógica original para Google SDK
   let modelsToTry = [...MODEL_FALLBACK_LIST];
   
   if (process.env.AI_MODEL) {
@@ -278,7 +373,7 @@ app.post('/api/gemini', async (req, res) => {
             case 'updateRadar': result = await handleUpdateRadar(ai, modelName); break;
             default: throw new Error("Ação inválida");
         }
-    });
+    }, action, payload);
 
     res.json(result);
 
