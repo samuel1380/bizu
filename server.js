@@ -22,7 +22,15 @@ const MODEL_FALLBACK_LIST = [
   "gemini-2.0-flash",       
   "gemini-1.5-pro",         
   "gemini-3-flash-preview", 
-  "gemini-1.5-flash-8b"     // Opção ultra-leve
+  "gemini-1.5-flash-8b"     
+];
+
+const OPENROUTER_MODELS = [
+  "google/gemini-2.0-flash-001",
+  "google/gemini-2.0-flash-lite-preview-02-05:free",
+  "google/gemini-pro-1.5",
+  "google/gemini-flash-1.5",
+  "google/gemini-2.0-pro-exp-02-05:free"
 ];
 
 const SAFETY_SETTINGS = [
@@ -88,7 +96,7 @@ function getAI() {
 }
 
 // --- CHAMADA OPENROUTER (FALLBACK) ---
-async function callOpenRouter(config, prompt, isJson = false, history = null) {
+async function callOpenRouter(config, prompt, isJson = false, history = null, specificModel = null) {
   const headers = {
     "Authorization": `Bearer ${config.apiKey.trim()}`,
     "Content-Type": "application/json",
@@ -102,7 +110,7 @@ async function callOpenRouter(config, prompt, isJson = false, history = null) {
   }
 
   const body = {
-    model: config.model,
+    model: specificModel || config.model,
     messages: messages,
     response_format: isJson ? { type: "json_object" } : undefined,
     temperature: 0.7
@@ -118,77 +126,71 @@ async function callOpenRouter(config, prompt, isJson = false, history = null) {
     const rawText = await response.text();
     
     if (!response.ok) {
-      console.error(`[OpenRouter Erro ${response.status}]`, rawText);
-      let errorMsg = `Erro ${response.status}`;
-      try {
-        const errorData = JSON.parse(rawText);
-        errorMsg = errorData.error?.message || errorMsg;
-      } catch (e) {
-        errorMsg = rawText || errorMsg;
+      const errorData = JSON.parse(rawText || "{}");
+      const msg = errorData.error?.message || rawText;
+      
+      // Se for erro de rate limit, lançamos um erro específico para o fallback capturar
+      if (response.status === 429) {
+        throw new Error(`RATE_LIMIT:${msg}`);
       }
-      throw new Error(errorMsg);
+      
+      throw new Error(msg);
     }
 
     const data = JSON.parse(rawText);
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error("Resposta do OpenRouter em formato inesperado.");
-    }
-
-    return {
-      text: data.choices[0].message.content
-    };
+    return { text: data.choices[0].message.content };
   } catch (error) {
-    console.error("[OpenRouter Exception]", error.message);
     throw error;
   }
 }
 
 // --- EXECUTOR UNIVERSAL ---
 async function runWithModelFallback(ai, actionCallback, actionName, payload) {
-  // Se for OpenRouter, usamos a lógica simplificada de fetch
   if (ai.isOpenRouter) {
-    console.log(`[OpenRouter] Executando ${actionName} com ${ai.model}`);
+    let models = [ai.model, ...OPENROUTER_MODELS.filter(m => m !== ai.model)];
     
-    // Mapeamento de ações para OpenRouter
-    if (actionName === 'generateQuiz') {
-      const prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-      const res = await callOpenRouter(ai, prompt, true);
-      return JSON.parse(extractJSON(res.text));
-    }
-    
-    if (actionName === 'askTutor') {
-      const history = (payload.history || []).map(m => ({
-        role: m.role === 'model' ? 'assistant' : 'user',
-        content: m.parts[0].text
-      }));
-      return await callOpenRouter(ai, payload.message, false, history);
-    }
+    for (const model of models) {
+      try {
+        console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
+        
+        let prompt = "";
+        let isJson = false;
+        let history = null;
 
-    if (actionName === 'generateMaterials') {
-      const prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
-      const res = await callOpenRouter(ai, prompt, true);
-      return JSON.parse(extractJSON(res.text));
-    }
+        if (actionName === 'generateQuiz') {
+          prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+          isJson = true;
+        } else if (actionName === 'askTutor') {
+          history = (payload.history || []).map(m => ({
+            role: m.role === 'model' ? 'assistant' : 'user',
+            content: m.parts[0].text
+          }));
+          prompt = payload.message;
+        } else if (actionName === 'generateMaterials') {
+          prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
+          isJson = true;
+        } else if (actionName === 'generateMaterialContent') {
+          prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
+        } else if (actionName === 'generateRoutine') {
+          prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
+          isJson = true;
+        } else if (actionName === 'updateRadar') {
+          prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
+          isJson = true;
+        }
 
-    if (actionName === 'generateMaterialContent') {
-      const prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
-      const res = await callOpenRouter(ai, prompt, false);
-      return { content: res.text };
+        const res = await callOpenRouter(ai, prompt, isJson, history, model);
+        return isJson ? JSON.parse(extractJSON(res.text)) : (actionName === 'generateMaterialContent' ? { content: res.text } : res);
+        
+      } catch (error) {
+        if (error.message.includes("RATE_LIMIT") || error.message.includes("429")) {
+          console.warn(`⚠️ Modelo ${model} limitado. Tentando próximo...`);
+          continue;
+        }
+        throw error;
+      }
     }
-
-    if (actionName === 'generateRoutine') {
-      const prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
-      const res = await callOpenRouter(ai, prompt, true);
-      return JSON.parse(extractJSON(res.text));
-    }
-
-    if (actionName === 'updateRadar') {
-      const prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
-      const res = await callOpenRouter(ai, prompt, true);
-      return JSON.parse(extractJSON(res.text));
-    }
-
-    throw new Error(`Ação ${actionName} não implementada para OpenRouter`);
+    throw new Error("Todos os modelos do OpenRouter falharam por limite de uso.");
   }
 
   // Lógica original para Google SDK
