@@ -90,9 +90,9 @@ function getAI() {
 // --- CHAMADA OPENROUTER (FALLBACK) ---
 async function callOpenRouter(config, prompt, isJson = false, history = null) {
   const headers = {
-    "Authorization": `Bearer ${config.apiKey}`,
+    "Authorization": `Bearer ${config.apiKey.trim()}`,
     "Content-Type": "application/json",
-    "HTTP-Referer": "https://bizu.app", // Opcional para OpenRouter
+    "HTTP-Referer": "https://bizu.app",
     "X-Title": "Bizu App"
   };
 
@@ -104,24 +104,43 @@ async function callOpenRouter(config, prompt, isJson = false, history = null) {
   const body = {
     model: config.model,
     messages: messages,
-    response_format: isJson ? { type: "json_object" } : undefined
+    response_format: isJson ? { type: "json_object" } : undefined,
+    temperature: 0.7
   };
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || `Erro OpenRouter: ${response.status}`);
+    const rawText = await response.text();
+    
+    if (!response.ok) {
+      console.error(`[OpenRouter Erro ${response.status}]`, rawText);
+      let errorMsg = `Erro ${response.status}`;
+      try {
+        const errorData = JSON.parse(rawText);
+        errorMsg = errorData.error?.message || errorMsg;
+      } catch (e) {
+        errorMsg = rawText || errorMsg;
+      }
+      throw new Error(errorMsg);
+    }
+
+    const data = JSON.parse(rawText);
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error("Resposta do OpenRouter em formato inesperado.");
+    }
+
+    return {
+      text: data.choices[0].message.content
+    };
+  } catch (error) {
+    console.error("[OpenRouter Exception]", error.message);
+    throw error;
   }
-
-  const data = await response.json();
-  return {
-    text: data.choices[0].message.content
-  };
 }
 
 // --- EXECUTOR UNIVERSAL ---
@@ -360,20 +379,23 @@ app.post('/api/gemini', async (req, res) => {
   
   try {
     const ai = getAI();
-    let result;
-
-    await runWithModelFallback(ai, async (modelName) => {
-        // console.log(`[Executando] ${action} com ${modelName}`);
+    
+    // Agora capturamos o retorno da função runWithModelFallback
+    const result = await runWithModelFallback(ai, async (modelName) => {
         switch (action) {
-            case 'generateQuiz': result = await handleGenerateQuiz(ai, modelName, payload); break;
-            case 'askTutor': result = await handleAskTutor(ai, modelName, payload); break;
-            case 'generateMaterials': result = await handleGenerateMaterials(ai, modelName, payload); break;
-            case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, modelName, payload); break;
-            case 'generateRoutine': result = await handleGenerateRoutine(ai, modelName, payload); break;
-            case 'updateRadar': result = await handleUpdateRadar(ai, modelName); break;
+            case 'generateQuiz': return await handleGenerateQuiz(ai, modelName, payload);
+            case 'askTutor': return await handleAskTutor(ai, modelName, payload);
+            case 'generateMaterials': return await handleGenerateMaterials(ai, modelName, payload);
+            case 'generateMaterialContent': return await handleGenerateMaterialContent(ai, modelName, payload);
+            case 'generateRoutine': return await handleGenerateRoutine(ai, modelName, payload);
+            case 'updateRadar': return await handleUpdateRadar(ai, modelName);
             default: throw new Error("Ação inválida");
         }
     }, action, payload);
+
+    if (!result) {
+      throw new Error("A IA não retornou dados para esta ação.");
+    }
 
     res.json(result);
 
