@@ -80,6 +80,12 @@ function firstNonEmpty(...values) {
   return "";
 }
 
+function isLikelyApiKey(value) {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return /^sk-[A-Za-z0-9_\-]{10,}$/.test(trimmed) || /^AIza[0-9A-Za-z_\-]{20,}$/.test(trimmed);
+}
+
 class Semaphore {
   constructor(maxConcurrency) {
     this.maxConcurrency = maxConcurrency;
@@ -139,23 +145,24 @@ function getProviderCandidates() {
 
 function getModelCandidates(provider) {
   const explicitFallback = parseEnvList(process.env.AI_MODEL_FALLBACK);
+  const envModel = process.env.AI_MODEL && !isLikelyApiKey(process.env.AI_MODEL) ? process.env.AI_MODEL : "";
 
   if (explicitFallback.length > 0) {
     const models = explicitFallback;
-    if (process.env.AI_MODEL) {
-      return [process.env.AI_MODEL, ...models.filter(m => m !== process.env.AI_MODEL)];
+    if (envModel) {
+      return [envModel, ...models.filter(m => m !== envModel)];
     }
     return models;
   }
 
   if (provider === "gemini") {
-    if (process.env.AI_MODEL) {
-      return [process.env.AI_MODEL, ...DEFAULT_GEMINI_MODEL_FALLBACK_LIST.filter(m => m !== process.env.AI_MODEL)];
+    if (envModel) {
+      return [envModel, ...DEFAULT_GEMINI_MODEL_FALLBACK_LIST.filter(m => m !== envModel)];
     }
     return [...DEFAULT_GEMINI_MODEL_FALLBACK_LIST];
   }
 
-  return [process.env.AI_MODEL || "gpt-4o-mini"];
+  return [envModel || "gpt-4o-mini"];
 }
 
 function isQuotaOrRateLimitError(error) {
