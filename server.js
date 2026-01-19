@@ -124,7 +124,9 @@ function getProviderCandidates() {
       const apiKeys = [
         ...parseEnvList(process.env.GEMINI_API_KEYS),
         ...parseEnvList(process.env.AI_API_KEYS),
-        firstNonEmpty(process.env.GEMINI_API_KEY, process.env.GOOGLE_API_KEY, process.env.API_KEY),
+        ...parseEnvList(process.env.GEMINI_API_KEY),
+        ...parseEnvList(process.env.GOOGLE_API_KEY),
+        ...parseEnvList(process.env.API_KEY),
       ].filter(Boolean);
       return { provider: "gemini", apiKeys };
     }
@@ -133,7 +135,8 @@ function getProviderCandidates() {
       const apiKeys = [
         ...parseEnvList(process.env.OPENAI_API_KEYS),
         ...parseEnvList(process.env.AI_API_KEYS),
-        firstNonEmpty(process.env.OPENAI_API_KEY, process.env.API_KEY),
+        ...parseEnvList(process.env.OPENAI_API_KEY),
+        ...parseEnvList(process.env.API_KEY),
       ].filter(Boolean);
       const baseUrl = firstNonEmpty(process.env.AI_BASE_URL, process.env.OPENAI_BASE_URL, "https://api.openai.com/v1");
       return { provider: "openai", apiKeys, baseUrl };
@@ -292,8 +295,13 @@ function createOpenAICompatibleProvider(apiKey, baseUrl) {
       return json?.choices?.[0]?.message?.content || "";
     },
     async generateJson({ model, prompt, systemInstruction }) {
-      const text = await this.generateText({ model, prompt, systemInstruction });
-      return JSON.parse(extractJSON(text));
+      try {
+        const text = await this.generateText({ model, prompt, systemInstruction });
+        return JSON.parse(extractJSON(text));
+      } catch (err) {
+        console.error(`[OpenAI JSON Error] Model: ${model}, Error:`, err.message);
+        throw err;
+      }
     },
     async chat({ model, systemInstruction, history, message }) {
       const messages = toOpenAIMessages(history, systemInstruction, message);
@@ -301,79 +309,72 @@ function createOpenAICompatibleProvider(apiKey, baseUrl) {
         model,
         messages
       };
-      const json = await fetchJsonWithTimeout(
-        `${normalizedBaseUrl}/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
+      
+      try {
+        const json = await fetchJsonWithTimeout(
+          `${normalizedBaseUrl}/chat/completions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`,
+              "HTTP-Referer": "https://bizu-app.render.com", // Opcional para OpenRouter
+              "X-Title": "Bizu App"
+            },
+            body: JSON.stringify(body)
           },
-          body: JSON.stringify(body)
-        },
-        AI_TIMEOUT_MS
-      );
-      return json?.choices?.[0]?.message?.content || "";
+          AI_TIMEOUT_MS
+        );
+        
+        if (!json?.choices?.[0]?.message?.content) {
+            console.error("[OpenAI Error] Resposta vazia do OpenRouter:", JSON.stringify(json));
+            throw new Error("Resposta vazia da IA");
+        }
+
+        return json.choices[0].message.content;
+      } catch (err) {
+        console.error(`[OpenAI Chat Error] Model: ${model}, Error:`, err.message);
+        throw err;
+      }
     }
   };
 }
 
-function createProviderClient(providerCandidate, apiKey) {
-  if (providerCandidate.provider === "gemini") {
-    return createGeminiProvider(apiKey);
-  }
-  if (providerCandidate.provider === "openai") {
-    return createOpenAICompatibleProvider(apiKey, providerCandidate.baseUrl);
-  }
-  throw new Error(`Provider não suportado: ${providerCandidate.provider}`);
-}
-
+// --- EXECUTOR UNIVERSAL ---
 async function runWithFallback(actionCallback) {
   const providers = getProviderCandidates();
-  if (providers.length === 0) {
-    throw new Error("Nenhum provider configurado (AI_PROVIDER/AI_PROVIDERS).");
-  }
+  let lastError = null;
 
-  let lastError;
+  for (const p of providers) {
+    const models = getModelCandidates(p.provider);
+    const keys = p.apiKeys.length > 0 ? p.apiKeys : [null];
 
-  for (const providerCandidate of providers) {
-    const keys = providerCandidate.apiKeys || [];
-    if (keys.length === 0) continue;
-
-    for (const apiKey of keys) {
-      const client = createProviderClient(providerCandidate, apiKey);
-      const models = getModelCandidates(providerCandidate.provider);
+    for (const key of keys) {
+      const providerInstance = p.provider === "gemini" 
+        ? createGeminiProvider(key) 
+        : createOpenAICompatibleProvider(key, p.baseUrl);
 
       for (const model of models) {
         try {
-          return await actionCallback({ client, model, provider: providerCandidate.provider });
+          return await actionCallback({ client: providerInstance, model, provider: p.provider });
         } catch (error) {
           lastError = error;
-
+          console.warn(`[Fallback] Falha com ${p.provider} (${model}):`, error.message);
+          
           if (isQuotaOrRateLimitError(error)) {
             await sleep(750);
             continue;
           }
-
-          if (isModelNotFoundError(error)) {
-            continue;
-          }
-
-          if (isAuthError(error)) {
-            break;
-          }
-
-          throw error;
+          if (isModelNotFoundError(error)) continue;
+          if (isAuthError(error)) break;
+          
+          continue;
         }
       }
     }
   }
 
-  if (lastError?.message?.includes("API_KEY_MISSING")) {
-    throw lastError;
-  }
-
-  throw lastError || new Error("Falha ao chamar a IA. Verifique provider, modelo e API key.");
+  throw lastError || new Error("Todos os modelos de IA falharam.");
 }
 
 // --- AÇÕES ---

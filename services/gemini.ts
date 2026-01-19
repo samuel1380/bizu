@@ -12,11 +12,35 @@ const apiCall = async (action: string, payload: any = {}) => {
       },
       body: JSON.stringify({ action, payload }),
     });
+    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
+    let data: any = null;
 
-    const data = await response.json();
+    if (contentType.includes('application/json')) {
+      data = text ? JSON.parse(text) : null;
+    } else {
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || `Erro do Servidor (${response.status})`);
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+      if (text && text.trim().startsWith('<!DOCTYPE')) {
+        throw new Error('Resposta HTML recebida. Verifique se o backend /api/gemini está ativo.');
+      }
+      throw new Error(`Erro do Servidor (${response.status})`);
+    }
+
+    if (!data && text) {
+      if (text.trim().startsWith('<!DOCTYPE')) {
+        throw new Error('Resposta HTML recebida. Verifique se o backend /api/gemini está ativo.');
+      }
+      return text as any;
     }
 
     return data;
