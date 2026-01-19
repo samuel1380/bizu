@@ -108,32 +108,116 @@ const Materials: React.FC = () => {
     try {
       const html2pdf = (await loadHtml2Pdf()) as any;
       
-      // Cria um elemento temporário para o PDF com estilos específicos
+      // Captura o conteúdo Markdown renderizado
+      const proseContent = document.querySelector('.prose')?.innerHTML || '';
+      
+      // Cria um elemento temporário para o PDF com estilos embutidos para garantir consistência
       const element = document.createElement('div');
+      element.style.width = '100%';
       element.innerHTML = `
-        <div style="padding: 40px; font-family: sans-serif; color: #334155; line-height: 1.6;">
-          <div style="border-bottom: 3px solid #0f172a; margin-bottom: 30px; padding-bottom: 10px;">
-            <h1 style="font-size: 28px; font-weight: 900; margin: 0; color: #1e293b;">${selectedMaterial.title}</h1>
-            <p style="color: #64748b; font-weight: bold; margin: 5px 0 0 0;">Material Gerado pelo Bizu App • Apostila para Concursos</p>
+        <style>
+          .pdf-container {
+            padding: 20px;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #1e293b;
+            line-height: 1.6;
+            background: white;
+          }
+          .pdf-header {
+            border-bottom: 4px solid #2563eb;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            text-align: left;
+          }
+          .pdf-title {
+            font-size: 32px;
+            font-weight: 900;
+            margin: 0;
+            color: #0f172a;
+            line-height: 1.1;
+          }
+          .pdf-subtitle {
+            color: #64748b;
+            font-weight: 800;
+            margin: 10px 0 0 0;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+          }
+          .pdf-content {
+            font-size: 14px;
+          }
+          /* Estilização básica para simular o 'prose' do Tailwind */
+          .pdf-content h1 { font-size: 24px; font-weight: 800; margin-top: 24px; margin-bottom: 16px; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
+          .pdf-content h2 { font-size: 20px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; color: #1e293b; }
+          .pdf-content h3 { font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; color: #334155; }
+          .pdf-content p { margin-bottom: 12px; }
+          .pdf-content ul, .pdf-content ol { margin-bottom: 16px; padding-left: 20px; }
+          .pdf-content li { margin-bottom: 4px; }
+          .pdf-content blockquote { 
+            border-left: 4px solid #3b82f6; 
+            background: #eff6ff; 
+            padding: 12px 20px; 
+            margin: 20px 0; 
+            font-style: italic;
+            border-radius: 0 8px 8px 0;
+          }
+          .pdf-content table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+          .pdf-content th { background: #f8fafc; text-align: left; padding: 10px; border: 1px solid #e2e8f0; font-weight: 700; }
+          .pdf-content td { padding: 10px; border: 1px solid #e2e8f0; }
+          .pdf-footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: bold;
+          }
+          /* Forçar quebras de página evitarem cortar títulos ou blocos */
+          h1, h2, h3 { page-break-after: avoid; }
+          blockquote, table, pre { page-break-inside: avoid; }
+        </style>
+        <div class="pdf-container">
+          <div class="pdf-header">
+            <h1 class="pdf-title">${selectedMaterial.title}</h1>
+            <p class="pdf-subtitle">Bizu App • Material de Estudo para Concursos</p>
           </div>
           <div class="pdf-content">
-            ${document.querySelector('.prose')?.innerHTML || ''}
+            ${proseContent}
           </div>
-          <div style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
-            © ${new Date().getFullYear()} Bizu App - Seu Mentor para Aprovação.
+          <div class="pdf-footer">
+            ESTE MATERIAL É PARTE INTEGRANTE DO BIZU APP • © ${new Date().getFullYear()} • TODOS OS DIREITOS RESERVADOS
           </div>
         </div>
       `;
 
       const opt = {
-        margin: [10, 10, 10, 10],
+        margin: [15, 15, 15, 15],
         filename: `Bizu_Apostila_${selectedMaterial.title.replace(/\s+/g, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true, 
+          letterRendering: true,
+          scrollY: 0,
+          windowWidth: 800 // Fixa a largura para garantir que o layout não quebre como se fosse mobile
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
+      // Adiciona o elemento ao corpo temporariamente para o html2canvas conseguir renderizar corretamente
+      document.body.appendChild(element);
+      element.style.position = 'absolute';
+      element.style.left = '-9999px';
+      element.style.top = '0';
+      element.style.width = '800px'; // Largura fixa para o canvas
+
       await html2pdf().set(opt).from(element).save();
+      
+      // Remove o elemento temporário
+      document.body.removeChild(element);
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
       alert("Erro ao gerar PDF. Tente usar o botão de Imprimir.");
@@ -344,32 +428,59 @@ const Materials: React.FC = () => {
       
       {/* Estilos Globais de Impressão */}
       <style>{`
-        /* Estilos para garantir que o conteúdo seja visível na impressão */
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            .print-content, .print-content * {
-                visibility: visible;
-            }
-            .print-content {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background: white !important;
-                padding: 20px;
-                color: black !important;
-            }
-            .print-content .prose {
-                color: black !important;
-                max-width: none !important;
-            }
-            /* Esconde botões na impressão */
-            button, .no-print {
-                display: none !important;
-            }
+          /* Esconde absolutamente tudo por padrão */
+          body * {
+            visibility: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          /* Mostra apenas a área de conteúdo do modal e seus filhos */
+          .print-content,
+          .print-content * {
+            visibility: visible !important;
+          }
+
+          /* Posiciona a área de impressão no topo e ocupa a página toda */
+          .print-content {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100vw !important;
+            height: auto !important;
+            background: white !important;
+            margin: 0 !important;
+            padding: 1.5cm !important; /* Margem padrão de impressão */
+            z-index: 9999 !important;
+          }
+
+          /* Garante que o container interno do material também seja visível */
+          .print-content > div {
+            border: none !important;
+            box-shadow: none !important;
+            width: 100% !important;
+            max-width: none !important;
+          }
+
+          /* Estiliza o texto para ficar preto no fundo branco */
+          .print-content .prose {
+            color: black !important;
+            max-width: none !important;
+            font-size: 12pt !important;
+          }
+
+          /* Esconde elementos indesejados (botões, scrollbars, etc) */
+          .no-print, 
+          button,
+          .fixed.inset-0.z-\[100\]:not(.print-content) {
+            display: none !important;
+          }
+
+          /* Força quebras de página corretas */
+          h1, h2, h3 { page-break-after: avoid !important; }
+          p, li { page-break-inside: auto !important; }
+          blockquote, table { page-break-inside: avoid !important; }
         }
       `}</style>
     </div>
