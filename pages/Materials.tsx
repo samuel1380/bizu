@@ -2,8 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
 import { generateStudyMaterials, generateMaterialContent } from '../services/gemini';
 import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
-import { FileText, Book, Search, Loader2, X, Sparkles, Printer } from 'lucide-react';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+
+// Função para injetar o script do html2pdf.js dinamicamente
+const loadHtml2Pdf = () => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).html2pdf) {
+      resolve((window as any).html2pdf);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = () => resolve((window as any).html2pdf);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
 
 const Materials: React.FC = () => {
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
@@ -15,6 +30,7 @@ const Materials: React.FC = () => {
   // Modal states
   const [selectedMaterial, setSelectedMaterial] = useState<StudyMaterial | null>(null);
   const [generatingContent, setGeneratingContent] = useState(false);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
 
   useEffect(() => {
     loadMaterials();
@@ -85,6 +101,47 @@ const Materials: React.FC = () => {
     document.title = originalTitle;
   };
 
+  const handleDownloadPDF = async () => {
+    if (!selectedMaterial || !selectedMaterial.content) return;
+    
+    setDownloadingPDF(true);
+    try {
+      const html2pdf = (await loadHtml2Pdf()) as any;
+      
+      // Cria um elemento temporário para o PDF com estilos específicos
+      const element = document.createElement('div');
+      element.innerHTML = `
+        <div style="padding: 40px; font-family: sans-serif; color: #334155; line-height: 1.6;">
+          <div style="border-bottom: 3px solid #0f172a; margin-bottom: 30px; padding-bottom: 10px;">
+            <h1 style="font-size: 28px; font-weight: 900; margin: 0; color: #1e293b;">${selectedMaterial.title}</h1>
+            <p style="color: #64748b; font-weight: bold; margin: 5px 0 0 0;">Material Gerado pelo Bizu App • Apostila para Concursos</p>
+          </div>
+          <div class="pdf-content">
+            ${document.querySelector('.prose')?.innerHTML || ''}
+          </div>
+          <div style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
+            © ${new Date().getFullYear()} Bizu App - Seu Mentor para Aprovação.
+          </div>
+        </div>
+      `;
+
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `Bizu_Apostila_${selectedMaterial.title.replace(/\s+/g, '_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      await html2pdf().set(opt).from(element).save();
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      alert("Erro ao gerar PDF. Tente usar o botão de Imprimir.");
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
+
   const categories = ['Todos', ...Array.from(new Set(materials.map(m => m.category)))];
 
   const filteredMaterials = materials.filter(m => {
@@ -103,7 +160,7 @@ const Materials: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 relative print:hidden">
+    <div className="space-y-6 relative no-print">
       {/* Esconde a interface principal na hora de imprimir, mostrando apenas o modal */}
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -200,11 +257,11 @@ const Materials: React.FC = () => {
 
       {/* Modal - Document Viewer */}
       {selectedMaterial && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:bg-white print:static print:p-0">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:bg-white print:static print:p-0 print-content">
           <div className="bg-white rounded-none md:rounded-3xl w-full max-w-4xl h-full md:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 md:border-b-8 md:border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none">
             
             {/* Header (Hidden on Print) */}
-            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 bg-white print:hidden">
+            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 bg-white no-print">
               <div className="pr-8">
                 <h2 className="text-2xl font-black text-slate-700 leading-tight">{selectedMaterial.title}</h2>
                 <div className="flex gap-2 mt-2">
@@ -218,13 +275,24 @@ const Materials: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                  {selectedMaterial.content && (
-                    <button 
-                        onClick={handlePrintPDF}
-                        className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors hidden md:block"
-                        title="Salvar como PDF / Imprimir"
-                    >
-                        <Printer size={24} strokeWidth={2.5} />
-                    </button>
+                    <>
+                      <button 
+                          onClick={handleDownloadPDF}
+                          disabled={downloadingPDF}
+                          className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors flex items-center gap-2"
+                          title="Baixar PDF Direto"
+                      >
+                          {downloadingPDF ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} strokeWidth={2.5} />}
+                          <span className="hidden md:block font-bold text-sm">BAIXAR PDF</span>
+                      </button>
+                      <button 
+                          onClick={handlePrintPDF}
+                          className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors hidden md:block"
+                          title="Salvar como PDF / Imprimir"
+                      >
+                          <Printer size={24} strokeWidth={2.5} />
+                      </button>
+                    </>
                  )}
                  <button 
                     onClick={handleCloseModal}
@@ -247,7 +315,7 @@ const Materials: React.FC = () => {
                    <ReactMarkdown>{selectedMaterial.content}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-20 text-center print:hidden">
+                <div className="flex flex-col items-center justify-center py-20 text-center no-print">
                    <div className="mb-6 text-slate-300">
                       <Sparkles size={64} />
                    </div>
@@ -276,24 +344,30 @@ const Materials: React.FC = () => {
       
       {/* Estilos Globais de Impressão */}
       <style>{`
+        /* Estilos para garantir que o conteúdo seja visível na impressão */
         @media print {
             body * {
                 visibility: hidden;
             }
-            .fixed.inset-0, .fixed.inset-0 * {
+            .print-content, .print-content * {
                 visibility: visible;
             }
-            .fixed.inset-0 {
+            .print-content {
                 position: absolute;
                 left: 0;
                 top: 0;
                 width: 100%;
                 height: 100%;
-                background: white;
-                padding: 0;
+                background: white !important;
+                padding: 20px;
+                color: black !important;
+            }
+            .print-content .prose {
+                color: black !important;
+                max-width: none !important;
             }
             /* Esconde botões na impressão */
-            button, .print\\:hidden {
+            button, .no-print {
                 display: none !important;
             }
         }
