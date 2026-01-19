@@ -232,7 +232,35 @@ const Quiz: React.FC = () => {
   }
 
   // --- Active Question Screen ---
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 text-center">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-8 shadow-sm">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-700 mb-2">Erro ao carregar questões</h2>
+          <p className="text-slate-500 mb-6">Não conseguimos carregar as questões deste quiz.</p>
+          <button onClick={handleExitQuiz} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold uppercase">
+            Voltar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQ = questions[currentQuestionIndex];
+  
+  if (!currentQ) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 text-center">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-8 shadow-sm">
+          <Loader2 size={48} className="animate-spin text-blue-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-700">Carregando questão...</h2>
+          <button onClick={handleExitQuiz} className="mt-4 text-blue-600 font-bold">Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
   const selectedOption = userAnswers[currentQ.id];
   const hasSelected = selectedOption !== undefined;
   

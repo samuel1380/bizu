@@ -26,11 +26,12 @@ const MODEL_FALLBACK_LIST = [
 ];
 
 const OPENROUTER_MODELS = [
+  "xiaomi/mimo-v2-flash:free",
+  "google/gemini-2.0-flash-exp:free",
   "google/gemini-2.0-flash-001",
   "openai/gpt-4o-mini",
-  "google/gemini-flash-1.5",
   "meta-llama/llama-3.1-8b-instruct",
-  "anthropic/claude-3-haiku"
+  "qwen/qwen-2.5-7b-instruct"
 ];
 
 const SAFETY_SETTINGS = [
@@ -54,48 +55,63 @@ app.use(express.static(join(__dirname, 'dist')));
 function extractJSON(text) {
   if (!text) return "{}";
 
-  // 1. Tenta limpar blocos de código markdown
-  let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  try {
+    // 1. Tenta limpar blocos de código markdown
+    let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
-  // 2. Se já parecer JSON, retorna
-  if ((cleanText.startsWith('{') && cleanText.endsWith('}')) || 
-      (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
+    // 2. Se já parecer JSON puro, retorna
+    if ((cleanText.startsWith('{') && cleanText.endsWith('}')) || 
+        (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
+      return cleanText;
+    }
+
+    // 3. Regex para encontrar o primeiro objeto {} ou array []
+    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    
+    if (jsonMatch) {
+      return jsonMatch[0];
+    }
+
     return cleanText;
+  } catch (e) {
+    console.error("Erro ao extrair JSON:", e);
+    return "{}";
   }
+}
 
-  // 3. Regex para encontrar o primeiro objeto {} ou array []
-  const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-  
-  if (jsonMatch) {
-    return jsonMatch[0];
+/**
+ * Garante que o retorno seja um array, mesmo se a IA envolver em um objeto
+ * Ex: { "questions": [...] } -> [...]
+ */
+function ensureArray(data) {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object') {
+    // Procura por qualquer propriedade que seja um array
+    const possibleArray = Object.values(data).find(val => Array.isArray(val));
+    if (possibleArray) return possibleArray;
   }
-
-  // 4. Fallback: retorna o texto original limpo (pode falhar no JSON.parse, mas tentamos)
-  return cleanText;
+  return [];
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 function getAI() {
-  const key = process.env.API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!key) {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  const openRouterKey = process.env.OPENAI_API_KEY;
+  
+  if (!geminiKey && !openRouterKey) {
     throw new Error("API_KEY_MISSING");
   }
   
-  const provider = process.env.AI_PROVIDER?.toLowerCase();
-  const isOpenRouter = provider === 'openrouter' || process.env.AI_BASE_URL || key.startsWith('sk-or-v1-');
-
-  // Se for OpenRouter ou tiver BASE_URL, retornamos um objeto especial para ser tratado no executor
-  if (isOpenRouter) {
-    return {
-      isOpenRouter: true,
-      apiKey: key,
+  return {
+    gemini: geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null,
+    openRouter: openRouterKey ? {
+      apiKey: openRouterKey,
       baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
       model: process.env.AI_MODEL || 'google/gemini-2.0-flash-exp:free'
-    };
-  }
-
-  return new GoogleGenAI({ apiKey: key });
+    } : null,
+    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (geminiKey ? 'gemini' : 'openrouter')
+  };
 }
 
 // --- CHAMADA OPENROUTER (FALLBACK) ---
@@ -133,26 +149,18 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
       try {
         const errorData = JSON.parse(rawText || "{}");
         errorMsg = errorData.error?.message || rawText;
-      } catch (e) {
-        // Se não for JSON, usa o rawText
-      }
+      } catch (e) {}
       
-      if (response.status === 429) {
-        throw new Error(`RATE_LIMIT:${errorMsg}`);
-      }
-      
+      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
       throw new Error(errorMsg || `Erro OpenRouter: ${response.status}`);
     }
 
-    if (!rawText || rawText.trim() === "") {
-      throw new Error("Resposta vazia do OpenRouter");
-    }
+    if (!rawText || rawText.trim() === "") throw new Error("Resposta vazia do OpenRouter");
 
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      console.error("[OpenRouter] Falha ao parsear resposta:", rawText);
       throw new Error("Resposta inválida do OpenRouter (JSON corrompido)");
     }
 
@@ -166,234 +174,167 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
   }
 }
 
-// --- EXECUTOR UNIVERSAL ---
-async function runWithModelFallback(ai, actionCallback, actionName, payload) {
-  if (ai.isOpenRouter) {
-    let models = [ai.model, ...OPENROUTER_MODELS.filter(m => m !== ai.model)];
-    
-    for (const model of models) {
-      try {
-        console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
-        
-        let prompt = "";
-        let isJson = false;
-        let history = null;
+// --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
+async function runWithModelFallback(ai, actionName, payload) {
+  const providersToTry = ai.preferredProvider === 'gemini' 
+    ? ['gemini', 'openrouter'] 
+    : ['openrouter', 'gemini'];
 
-        if (actionName === 'generateQuiz') {
-          prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-          isJson = true;
-        } else if (actionName === 'askTutor') {
-          history = (payload.history || []).map(m => ({
-            role: m.role === 'model' ? 'assistant' : 'user',
-            content: m.parts[0].text
-          }));
-          prompt = payload.message;
-        } else if (actionName === 'generateMaterials') {
-          prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
-          isJson = true;
-        } else if (actionName === 'generateMaterialContent') {
-          prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
-        } else if (actionName === 'generateRoutine') {
-          prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
-          isJson = true;
-        } else if (actionName === 'updateRadar') {
-          prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
-          isJson = true;
+  for (const provider of providersToTry) {
+    // --- TENTANDO GEMINI ---
+    if (provider === 'gemini' && ai.gemini) {
+      let modelsToTry = [...MODEL_FALLBACK_LIST];
+      if (process.env.AI_MODEL && !process.env.AI_MODEL.includes("/")) {
+        modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
+      }
+
+      for (const model of modelsToTry) {
+        try {
+          console.log(`[Gemini] Tentando ${actionName} com ${model}`);
+          if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
+          if (actionName === 'askTutor') return await handleAskTutor(ai.gemini, model, payload);
+          if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
+          if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
+          if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
+          if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model);
+        } catch (error) {
+          if (error.message.includes("429") || error.message.includes("Quota")) {
+            console.warn(`⚠️ Gemini ${model} limitado. Tentando próximo modelo Gemini...`);
+            continue;
+          }
+          console.error(`❌ Erro no Gemini (${model}):`, error.message);
+          break; // Sai do loop de modelos Gemini e tenta o próximo provedor
         }
+      }
+    }
 
-        const res = await callOpenRouter(ai, prompt, isJson, history, model);
-        return isJson ? JSON.parse(extractJSON(res.text)) : (actionName === 'generateMaterialContent' ? { content: res.text } : res);
-        
-      } catch (error) {
-        if (error.message.includes("RATE_LIMIT") || error.message.includes("429")) {
-          console.warn(`⚠️ Modelo ${model} limitado. Tentando próximo...`);
+    // --- TENTANDO OPENROUTER ---
+    if (provider === 'openrouter' && ai.openRouter) {
+      let models = [ai.openRouter.model, ...OPENROUTER_MODELS.filter(m => m !== ai.openRouter.model)];
+      for (const model of models) {
+        try {
+          console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
+          
+          let prompt = "";
+          let isJson = false;
+          let history = null;
+
+          if (actionName === 'generateQuiz') {
+            prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+            isJson = true;
+          } else if (actionName === 'askTutor') {
+            history = (payload.history || []).map(m => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.parts[0].text
+            }));
+            prompt = payload.message;
+          } else if (actionName === 'generateMaterials') {
+            prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
+            isJson = true;
+          } else if (actionName === 'generateMaterialContent') {
+            prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
+          } else if (actionName === 'generateRoutine') {
+            prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
+            isJson = true;
+          } else if (actionName === 'updateRadar') {
+            prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
+            isJson = true;
+          }
+
+          const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
+          if (isJson) {
+            const parsed = JSON.parse(extractJSON(res.text));
+            return actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar' 
+              ? ensureArray(parsed) 
+              : parsed;
+          }
+          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+        } catch (error) {
+          console.warn(`⚠️ OpenRouter ${model} falhou: ${error.message}. Tentando próximo modelo...`);
           continue;
         }
-        throw error;
       }
     }
-    throw new Error("Todos os modelos do OpenRouter falharam por limite de uso.");
   }
 
-  // Lógica original para Google SDK
-  let modelsToTry = [...MODEL_FALLBACK_LIST];
-  
-  if (process.env.AI_MODEL) {
-    console.log(`[Config] Modelo forçado pelo usuário: ${process.env.AI_MODEL}`);
-    // Coloca o modelo do usuário no topo da lista
-    modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
-  }
-
-  // Remove duplicatas
-  const uniqueModels = [...new Set(modelsToTry)];
-
-  for (const model of uniqueModels) {
-    try {
-      // console.log(`Tentando modelo: ${model}...`);
-      return await actionCallback(model);
-    } catch (error) {
-      const msg = error.message || "";
-      
-      // Se for erro de cota (429), esperamos um pouco e tentamos o próximo
-      if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
-        console.warn(`⚠️ ${model} atingiu o limite (429). Alternando...`);
-        await sleep(1000); // Backoff curto para trocar de modelo rápido
-        continue;
-      }
-
-      // Se o modelo não existir (404), vai para o próximo
-      if (msg.includes("404") || msg.includes("not found")) {
-        console.warn(`⚠️ ${model} não disponível para sua chave API. Alternando...`);
-        continue;
-      }
-
-      // Se for outro erro, lançamos para ser tratado na rota
-      throw error;
-    }
-  }
-
-  throw new Error("Todos os modelos de IA falharam ou estão ocupados.");
+  throw new Error("Todas as IAs e modelos (Gemini e OpenRouter) atingiram o limite de uso.");
 }
 
 // --- AÇÕES ---
 
-async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
-  // Configuração para garantir JSON mesmo em modelos antigos
-  const prompt = `Você é um gerador de questões JSON.
+async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberOfQuestions }) {
+  const model = genAI.getGenerativeModel({ 
+    model: modelName,
+    generationConfig: { responseMimeType: "application/json" },
+    safetySettings: SAFETY_SETTINGS
+  });
+
+  const prompt = `Você é um gerador de questões JSON para concursos.
   Tarefa: Criar ${numberOfQuestions} questões sobre "${topic}" (${difficulty}).
+  Responda APENAS o JSON.
+  Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "porque..."}]`;
   
-  IMPORTANTE: Responda APENAS com o JSON puro. Sem introduções.
-  
-  Schema obrigatório:
-  [
-    {
-      "id": "uuid",
-      "text": "Enunciado da questão",
-      "options": ["Alternativa A", "B", "C", "D", "E"],
-      "correctAnswerIndex": 0,
-      "explanation": "Explicação breve"
-    }
-  ]`;
-  
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: { 
-      responseMimeType: "application/json", 
-      safetySettings: SAFETY_SETTINGS 
-    }
-  });
-  
-  const jsonStr = extractJSON(response.text);
-  return JSON.parse(jsonStr);
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+  return ensureArray(JSON.parse(extractJSON(text)));
 }
 
-async function handleAskTutor(ai, modelName, { history, message }) {
-  // Limita contexto para economizar tokens e evitar erros em modelos com janela pequena
-  const limitedHistory = (history || []).slice(-6); 
-  
-  const chat = ai.chats.create({
+async function handleAskTutor(genAI, modelName, { history, message }) {
+  const model = genAI.getGenerativeModel({ 
     model: modelName,
-    history: limitedHistory,
-    config: {
-      systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown (negrito, listas).",
-      safetySettings: SAFETY_SETTINGS
-    }
+    systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown.",
+    safetySettings: SAFETY_SETTINGS
+  });
+
+  const chat = model.startChat({
+    history: (history || []).slice(-6)
   });
   
-  const result = await chat.sendMessage({ message });
-  
-  // Tratamento para respostas vazias
-  if (!result.text || result.text.trim() === "") {
-     return { text: "⚠️ A IA recebeu sua mensagem mas não gerou texto. Tente reformular." };
-  }
-  
-  return { text: result.text };
+  const result = await chat.sendMessage(message);
+  return { text: result.response.text() };
 }
 
-async function handleGenerateMaterials(ai, modelName, { count }) {
-  const prompt = `Liste ${count} materiais de estudo sobre concursos.
-  Format: JSON Array.
-  Types: "PDF" ou "ARTICLE". (NO VIDEO).
-  
-  Schema:
-  [
-    {
-      "title": "Título do Material",
-      "category": "Matéria",
-      "type": "PDF",
-      "duration": "10 pág",
-      "summary": "Resumo breve"
-    }
-  ]`;
-
-  const response = await ai.models.generateContent({
+async function handleGenerateMaterials(genAI, modelName, { count }) {
+  const model = genAI.getGenerativeModel({ 
     model: modelName,
-    contents: prompt,
-    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+    generationConfig: { responseMimeType: "application/json" },
+    safetySettings: SAFETY_SETTINGS
   });
 
-  return JSON.parse(extractJSON(response.text));
+  const prompt = `Liste ${count} materiais de estudo sobre concursos. JSON Array: [{"title": "Nome", "category": "Matéria", "type": "PDF", "duration": "10 pág", "summary": "Resumo"}]`;
+  const result = await model.generateContent(prompt);
+  return ensureArray(JSON.parse(extractJSON(result.response.text())));
 }
 
-async function handleGenerateMaterialContent(ai, modelName, { material }) {
-  // Sem JSON mode aqui, queremos Markdown texto livre
-  const prompt = `Gere o conteúdo completo de uma apostila/artigo sobre: "${material.title}".
-  Use Markdown.
-  Estrutura:
-  - Introdução
-  - Tópicos Principais (Detalhados)
-  - Exemplos
-  - Conclusão`;
-  
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: { safetySettings: SAFETY_SETTINGS }
-  });
-
-  return { content: response.text };
+async function handleGenerateMaterialContent(genAI, modelName, { material }) {
+  const model = genAI.getGenerativeModel({ model: modelName, safetySettings: SAFETY_SETTINGS });
+  const prompt = `Gere conteúdo Markdown detalhado para: "${material.title}".`;
+  const result = await model.generateContent(prompt);
+  return { content: result.response.text() };
 }
 
-async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subjects }) {
-  const prompt = `Crie uma rotina de estudos JSON para ${targetExam} (${hours}h/dia).
-  Foco: ${subjects}.
-  
-  Schema:
-  {
-    "weekSchedule": [
-      {
-        "day": "Segunda-feira",
-        "focus": "Matéria Principal",
-        "tasks": [
-          { "subject": "Matéria", "activity": "Teoria/Questões", "duration": "1h" }
-        ]
-      }
-    ]
-  }`;
-
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects }) {
+  const model = genAI.getGenerativeModel({ 
+    model: modelName, 
+    generationConfig: { responseMimeType: "application/json" },
+    safetySettings: SAFETY_SETTINGS
   });
 
-  return JSON.parse(extractJSON(response.text));
+  const prompt = `Crie rotina de estudos JSON para ${targetExam} (${hours}h/dia). Foco: ${subjects}. Schema: {"weekSchedule":[{"day": "Segunda", "focus": "Matéria", "tasks": [{"subject": "X", "activity": "Y", "duration": "1h"}]}]}`;
+  const result = await model.generateContent(prompt);
+  return JSON.parse(extractJSON(result.response.text()));
 }
 
-async function handleUpdateRadar(ai, modelName) {
-  const prompt = `Liste 5 concursos públicos brasileiros em destaque recentemente.
-  JSON Array.
-  Schema:
-  [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
-
-  const response = await ai.models.generateContent({
+async function handleUpdateRadar(genAI, modelName) {
+  const model = genAI.getGenerativeModel({ 
     model: modelName,
-    contents: prompt,
-    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+    generationConfig: { responseMimeType: "application/json" },
+    safetySettings: SAFETY_SETTINGS
   });
 
-  return JSON.parse(extractJSON(response.text));
+  const prompt = `Liste 5 concursos previstos. JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+  const result = await model.generateContent(prompt);
+  return ensureArray(JSON.parse(extractJSON(result.response.text())));
 }
 
 // --- ROTAS ---
@@ -403,19 +344,7 @@ app.post('/api/gemini', async (req, res) => {
   
   try {
     const ai = getAI();
-    
-    // Agora capturamos o retorno da função runWithModelFallback
-    const result = await runWithModelFallback(ai, async (modelName) => {
-        switch (action) {
-            case 'generateQuiz': return await handleGenerateQuiz(ai, modelName, payload);
-            case 'askTutor': return await handleAskTutor(ai, modelName, payload);
-            case 'generateMaterials': return await handleGenerateMaterials(ai, modelName, payload);
-            case 'generateMaterialContent': return await handleGenerateMaterialContent(ai, modelName, payload);
-            case 'generateRoutine': return await handleGenerateRoutine(ai, modelName, payload);
-            case 'updateRadar': return await handleUpdateRadar(ai, modelName);
-            default: throw new Error("Ação inválida");
-        }
-    }, action, payload);
+    const result = await runWithModelFallback(ai, action, payload);
 
     if (!result) {
       throw new Error("A IA não retornou dados para esta ação.");
