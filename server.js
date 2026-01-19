@@ -229,10 +229,23 @@ async function runWithModelFallback(ai, actionName, payload) {
             }));
             prompt = payload.message;
           } else if (actionName === 'generateMaterials') {
-            prompt = `Liste ${payload.count} materiais de estudo sobre concursos. JSON Array: [{title, category, type:"PDF", duration, summary}]`;
+            prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
+            Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
+            JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo do que será abordado"}]`;
             isJson = true;
           } else if (actionName === 'generateMaterialContent') {
-            prompt = `Gere conteúdo Markdown para: ${payload.material.title}`;
+            prompt = `Você é um Professor de Cursinho Preparatório.
+            Gere uma APOSTILA ou RESUMO DE ESTUDO completo em Markdown para o tema: "${payload.material.title}".
+            
+            ESTRUTURA OBRIGATÓRIA:
+            1. Título Chamativo (H1)
+            2. Introdução ao Tema
+            3. Tópicos Detalhados (H2 e H3)
+            4. Dicas de Ouro para Concursos (Destaque)
+            5. Resumo Final (Bullet points)
+            6. Referências ou Base Legal (se houver)
+            
+            Use Markdown rico: negrito, tabelas, listas e blocos de citação. Foque em clareza e organização para impressão.`;
           } else if (actionName === 'generateRoutine') {
             prompt = `Crie rotina de estudos JSON para ${payload.targetExam} (${payload.hours}h/dia). Foco: ${payload.subjects}. Schema: {weekSchedule:[{day, focus, tasks:[{subject, activity, duration}]}]}`;
             isJson = true;
@@ -301,14 +314,27 @@ async function handleGenerateMaterials(genAI, modelName, { count }) {
     safetySettings: SAFETY_SETTINGS
   });
 
-  const prompt = `Liste ${count} materiais de estudo sobre concursos. JSON Array: [{"title": "Nome", "category": "Matéria", "type": "PDF", "duration": "10 pág", "summary": "Resumo"}]`;
+  const prompt = `Você é um Especialista em Concursos. Liste ${count} materiais de estudo de alta qualidade.
+  Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
+  JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo do que será abordado"}]`;
   const result = await model.generateContent(prompt);
   return ensureArray(JSON.parse(extractJSON(result.response.text())));
 }
 
 async function handleGenerateMaterialContent(genAI, modelName, { material }) {
   const model = genAI.getGenerativeModel({ model: modelName, safetySettings: SAFETY_SETTINGS });
-  const prompt = `Gere conteúdo Markdown detalhado para: "${material.title}".`;
+  const prompt = `Você é um Professor de Cursinho Preparatório focado em aprovação.
+  Gere uma APOSTILA ou RESUMO DE ESTUDO completo e altamente organizado em Markdown para o tema: "${material.title}".
+  
+  ESTRUTURA OBRIGATÓRIA:
+  1. Título Chamativo (H1)
+  2. Introdução ao Tema (Contextualização para concursos)
+  3. Tópicos Detalhados e Aprofundados (H2 e H3)
+  4. Quadros Comparativos ou Tabelas (se aplicável)
+  5. Dicas de Ouro / Bizus (Destaque usando blocos de citação)
+  6. Resumo Final (Bullet points para revisão rápida)
+  
+  FOCO: O conteúdo deve ser denso, profissional e pronto para ser impresso como material de estudo de alto nível.`;
   const result = await model.generateContent(prompt);
   return { content: result.response.text() };
 }

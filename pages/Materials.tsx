@@ -78,8 +78,11 @@ const Materials: React.FC = () => {
   };
 
   const handlePrintPDF = () => {
-    // Abre a caixa de diálogo de impressão do navegador para salvar como PDF
+    // Título do documento para o nome do arquivo ao salvar PDF
+    const originalTitle = document.title;
+    document.title = `Bizu_Apostila_${selectedMaterial?.title.replace(/\s+/g, '_')}`;
     window.print();
+    document.title = originalTitle;
   };
 
   const categories = ['Todos', ...Array.from(new Set(materials.map(m => m.category)))];
