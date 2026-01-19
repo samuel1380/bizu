@@ -81,6 +81,17 @@ const Quiz: React.FC = () => {
     }
   };
 
+  const handleExitQuiz = () => {
+    setQuestions([]);
+    setShowResults(false);
+    setCurrentQuestionIndex(0);
+    setUserAnswers({});
+    setIsChecked(false);
+    setError(null);
+    setSavingResult(false);
+    setLoading(false);
+  };
+
   // --- Configuration Screen ---
   if (questions.length === 0 && !loading) {
     return (
@@ -232,7 +243,7 @@ const Quiz: React.FC = () => {
     <div className="max-w-3xl mx-auto py-4">
       {/* Progress Bar */}
       <div className="flex items-center gap-4 mb-8">
-        <button className="text-slate-300 hover:text-slate-500">
+        <button onClick={handleExitQuiz} className="text-slate-300 hover:text-slate-500">
             <X size={28} strokeWidth={3} />
         </button>
         <div className="h-4 flex-grow bg-slate-200 rounded-full overflow-hidden">
