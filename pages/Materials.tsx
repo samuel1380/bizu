@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
 import { generateStudyMaterials, generateMaterialContent } from '../services/gemini';
 import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
-import { FileText, Book, Search, Loader2, X, Sparkles, Download } from 'lucide-react';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import jsPDF from 'jspdf';
 
 const Materials: React.FC = () => {
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
@@ -61,25 +60,9 @@ const Materials: React.FC = () => {
     setSelectedMaterial(null);
   };
 
-  const stripMarkdown = (text: string) => {
-    return text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/!\[.*?\]\(.*?\)/g, '')
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-      .replace(/[#>*_~\-]/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  };
-
-  const sanitizeFileName = (name: string) => {
-    return name.replace(/[\\/:*?"<>|]/g, '').trim() || 'material';
-  };
-
-  const ensureMaterialContent = async (): Promise<StudyMaterial | null> => {
-    if (!selectedMaterial) return null;
-    if (selectedMaterial.content) return selectedMaterial;
-
+  const handleGenerateContent = async () => {
+    if (!selectedMaterial) return;
+    
     setGeneratingContent(true);
     try {
       const content = await generateMaterialContent(selectedMaterial);
@@ -87,54 +70,16 @@ const Materials: React.FC = () => {
       await saveMaterial(updatedMaterial);
       setMaterials(prev => prev.map(m => m.id === updatedMaterial.id ? updatedMaterial : m));
       setSelectedMaterial(updatedMaterial);
-      return updatedMaterial;
     } catch (error) {
       console.error("Failed to generate content", error);
-      return null;
     } finally {
       setGeneratingContent(false);
     }
   };
 
-  const handleGenerateContent = async () => {
-    await ensureMaterialContent();
-  };
-
-  const handleDownloadPdf = async () => {
-    const material = await ensureMaterialContent();
-    if (!material || !material.content) return;
-
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 48;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.text(material.title, margin, margin + 12);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
-    let y = margin + 40;
-    const contentText = stripMarkdown(material.content);
-    const lines = doc.splitTextToSize(contentText, pageWidth - margin * 2);
-
-    for (const line of lines) {
-      if (y > pageHeight - margin) {
-        doc.addPage();
-        y = margin;
-      }
-      doc.text(line, margin, y);
-      y += 16;
-    }
-
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${sanitizeFileName(material.title)}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const handlePrintPDF = () => {
+    // Abre a caixa de diálogo de impressão do navegador para salvar como PDF
+    window.print();
   };
 
   const categories = ['Todos', ...Array.from(new Set(materials.map(m => m.category)))];
@@ -269,14 +214,15 @@ const Materials: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                 <button 
-                    onClick={handleDownloadPdf}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-colors flex items-center gap-2 font-bold uppercase tracking-wider text-xs"
-                    title="Baixar PDF"
-                 >
-                    <Download size={18} strokeWidth={2.5} />
-                    BAIXAR PDF
-                 </button>
+                 {selectedMaterial.content && (
+                    <button 
+                        onClick={handlePrintPDF}
+                        className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors hidden md:block"
+                        title="Salvar como PDF / Imprimir"
+                    >
+                        <Printer size={24} strokeWidth={2.5} />
+                    </button>
+                 )}
                  <button 
                     onClick={handleCloseModal}
                     className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-colors"

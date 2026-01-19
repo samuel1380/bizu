@@ -11,7 +11,13 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const DEFAULT_GEMINI_MODEL_FALLBACK_LIST = [
+// --- LISTA UNIVERSAL DE MODELOS ---
+// A ordem aqui define a prioridade.
+// 1. gemini-1.5-flash: Maior limite gratuito, extremamente rápido e estável.
+// 2. gemini-2.0-flash: Ótimo balanço entre inteligência e velocidade.
+// 3. gemini-1.5-pro: Mais inteligente, porém mais lento e com limite menor.
+// 4. gemini-3-flash-preview: Experimental (limites baixos, usar com cautela).
+const MODEL_FALLBACK_LIST = [
   "gemini-1.5-flash",       
   "gemini-2.0-flash",       
   "gemini-1.5-pro",         
@@ -25,9 +31,6 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
-
-const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 30_000);
-const AI_MAX_CONCURRENCY = Math.max(1, Number(process.env.AI_MAX_CONCURRENCY || 4));
 
 // --- MIDDLEWARES ---
 app.use(cors());
@@ -65,321 +68,59 @@ function extractJSON(text) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-function parseEnvList(value) {
-  if (!value) return [];
-  return value
-    .split(/[,\n]/g)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function firstNonEmpty(...values) {
-  for (const v of values) {
-    if (typeof v === 'string' && v.trim()) return v.trim();
+function getAI() {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY_MISSING");
   }
-  return "";
-}
-
-function isLikelyApiKey(value) {
-  if (!value) return false;
-  const trimmed = value.trim();
-  return /^sk-[A-Za-z0-9_\-]{10,}$/.test(trimmed) || /^AIza[0-9A-Za-z_\-]{20,}$/.test(trimmed);
-}
-
-class Semaphore {
-  constructor(maxConcurrency) {
-    this.maxConcurrency = maxConcurrency;
-    this.running = 0;
-    this.queue = [];
-  }
-
-  acquire() {
-    return new Promise(resolve => {
-      const tryAcquire = () => {
-        if (this.running < this.maxConcurrency) {
-          this.running += 1;
-          resolve(() => {
-            this.running -= 1;
-            const next = this.queue.shift();
-            if (next) next();
-          });
-          return;
-        }
-        this.queue.push(tryAcquire);
-      };
-      tryAcquire();
-    });
-  }
-}
-
-const aiSemaphore = new Semaphore(AI_MAX_CONCURRENCY);
-
-function getProviderCandidates() {
-  const providers = parseEnvList(process.env.AI_PROVIDERS || process.env.AI_PROVIDER || "gemini");
-
-  return providers.map((p) => {
-    const provider = (p || "").toLowerCase();
-
-    if (provider === "gemini" || provider === "google") {
-      const apiKeys = [
-        ...parseEnvList(process.env.GEMINI_API_KEYS),
-        ...parseEnvList(process.env.AI_API_KEYS),
-        ...parseEnvList(process.env.GEMINI_API_KEY),
-        ...parseEnvList(process.env.GOOGLE_API_KEY),
-        ...parseEnvList(process.env.API_KEY),
-      ].filter(Boolean);
-      return { provider: "gemini", apiKeys };
-    }
-
-    if (provider === "openai" || provider === "openai_compatible" || provider === "compatible") {
-      const apiKeys = [
-        ...parseEnvList(process.env.OPENAI_API_KEYS),
-        ...parseEnvList(process.env.AI_API_KEYS),
-        ...parseEnvList(process.env.OPENAI_API_KEY),
-        ...parseEnvList(process.env.API_KEY),
-      ].filter(Boolean);
-      const baseUrl = firstNonEmpty(process.env.AI_BASE_URL, process.env.OPENAI_BASE_URL, "https://api.openai.com/v1");
-      return { provider: "openai", apiKeys, baseUrl };
-    }
-
-    return { provider, apiKeys: [] };
-  });
-}
-
-function getModelCandidates(provider) {
-  const explicitFallback = parseEnvList(process.env.AI_MODEL_FALLBACK);
-  const envModel = process.env.AI_MODEL && !isLikelyApiKey(process.env.AI_MODEL) ? process.env.AI_MODEL : "";
-
-  if (explicitFallback.length > 0) {
-    const models = explicitFallback;
-    if (envModel) {
-      return [envModel, ...models.filter(m => m !== envModel)];
-    }
-    return models;
-  }
-
-  if (provider === "gemini") {
-    if (envModel) {
-      return [envModel, ...DEFAULT_GEMINI_MODEL_FALLBACK_LIST.filter(m => m !== envModel)];
-    }
-    return [...DEFAULT_GEMINI_MODEL_FALLBACK_LIST];
-  }
-
-  return [envModel || "gpt-4o-mini"];
-}
-
-function isQuotaOrRateLimitError(error) {
-  const status = error?.status;
-  const msg = (error?.message || "").toString();
-  return status === 429 || msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("rate limit");
-}
-
-function isModelNotFoundError(error) {
-  const status = error?.status;
-  const msg = (error?.message || "").toString();
-  return status === 404 || msg.includes("404") || msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("model");
-}
-
-function isAuthError(error) {
-  const status = error?.status;
-  const msg = (error?.message || "").toString();
-  return status === 401 || status === 403 || msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("forbidden");
-}
-
-function createGeminiProvider(apiKey) {
-  const ai = new GoogleGenAI({ apiKey });
-  return {
-    provider: "gemini",
-    async generateText({ model, prompt, systemInstruction }) {
-      const finalPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
-      const response = await ai.models.generateContent({
-        model,
-        contents: finalPrompt,
-        config: { safetySettings: SAFETY_SETTINGS }
-      });
-      return response.text || "";
-    },
-    async generateJson({ model, prompt, systemInstruction }) {
-      const finalPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
-      const response = await ai.models.generateContent({
-        model,
-        contents: finalPrompt,
-        config: {
-          responseMimeType: "application/json",
-          safetySettings: SAFETY_SETTINGS
-        }
-      });
-      return JSON.parse(extractJSON(response.text));
-    },
-    async chat({ model, systemInstruction, history, message }) {
-      const limitedHistory = (history || []).slice(-6);
-      const chat = ai.chats.create({
-        model,
-        history: limitedHistory,
-        config: {
-          systemInstruction,
-          safetySettings: SAFETY_SETTINGS
-        }
-      });
-      const result = await chat.sendMessage({ message });
-      return result.text || "";
-    }
-  };
-}
-
-async function fetchJsonWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    const text = await res.text();
-    let json;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      json = null;
-    }
-    if (!res.ok) {
-      const msg = (json?.error?.message || json?.message || text || `HTTP ${res.status}`).toString();
-      const err = new Error(msg);
-      err.status = res.status;
-      throw err;
-    }
-    return json;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function toOpenAIMessages(history, systemInstruction, userMessage) {
-  const messages = [];
-  if (systemInstruction) {
-    messages.push({ role: "system", content: systemInstruction });
-  }
-
-  for (const h of (history || []).slice(-6)) {
-    const role = h?.role === "user" ? "user" : "assistant";
-    const content = (h?.parts || []).map(p => p?.text).filter(Boolean).join("\n");
-    if (content) messages.push({ role, content });
-  }
-
-  if (userMessage) {
-    messages.push({ role: "user", content: userMessage });
-  }
-
-  return messages;
-}
-
-function createOpenAICompatibleProvider(apiKey, baseUrl) {
-  const normalizedBaseUrl = (baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
-  return {
-    provider: "openai",
-    async generateText({ model, prompt, systemInstruction }) {
-      const messages = toOpenAIMessages([], systemInstruction, prompt);
-      const body = {
-        model,
-        messages
-      };
-      const json = await fetchJsonWithTimeout(
-        `${normalizedBaseUrl}/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
-          },
-          body: JSON.stringify(body)
-        },
-        AI_TIMEOUT_MS
-      );
-      return json?.choices?.[0]?.message?.content || "";
-    },
-    async generateJson({ model, prompt, systemInstruction }) {
-      try {
-        const text = await this.generateText({ model, prompt, systemInstruction });
-        return JSON.parse(extractJSON(text));
-      } catch (err) {
-        console.error(`[OpenAI JSON Error] Model: ${model}, Error:`, err.message);
-        throw err;
-      }
-    },
-    async chat({ model, systemInstruction, history, message }) {
-      const messages = toOpenAIMessages(history, systemInstruction, message);
-      const body = {
-        model,
-        messages
-      };
-      
-      try {
-        const json = await fetchJsonWithTimeout(
-          `${normalizedBaseUrl}/chat/completions`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${apiKey}`,
-              "HTTP-Referer": "https://bizu-app.render.com", // Opcional para OpenRouter
-              "X-Title": "Bizu App"
-            },
-            body: JSON.stringify(body)
-          },
-          AI_TIMEOUT_MS
-        );
-        
-        if (!json?.choices?.[0]?.message?.content) {
-            console.error("[OpenAI Error] Resposta vazia do OpenRouter:", JSON.stringify(json));
-            throw new Error("Resposta vazia da IA");
-        }
-
-        return json.choices[0].message.content;
-      } catch (err) {
-        console.error(`[OpenAI Chat Error] Model: ${model}, Error:`, err.message);
-        throw err;
-      }
-    }
-  };
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
 // --- EXECUTOR UNIVERSAL ---
-async function runWithFallback(actionCallback) {
-  const providers = getProviderCandidates();
-  let lastError = null;
+async function runWithModelFallback(ai, actionCallback) {
+  // Se o usuário forçar um modelo via variável de ambiente, tentamos ele PRIMEIRO e com insistência.
+  let modelsToTry = [...MODEL_FALLBACK_LIST];
+  
+  if (process.env.AI_MODEL) {
+    console.log(`[Config] Modelo forçado pelo usuário: ${process.env.AI_MODEL}`);
+    // Coloca o modelo do usuário no topo da lista
+    modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
+  }
 
-  for (const p of providers) {
-    const models = getModelCandidates(p.provider);
-    const keys = p.apiKeys.length > 0 ? p.apiKeys : [null];
+  // Remove duplicatas
+  const uniqueModels = [...new Set(modelsToTry)];
 
-    for (const key of keys) {
-      const providerInstance = p.provider === "gemini" 
-        ? createGeminiProvider(key) 
-        : createOpenAICompatibleProvider(key, p.baseUrl);
-
-      for (const model of models) {
-        try {
-          return await actionCallback({ client: providerInstance, model, provider: p.provider });
-        } catch (error) {
-          lastError = error;
-          console.warn(`[Fallback] Falha com ${p.provider} (${model}):`, error.message);
-          
-          if (isQuotaOrRateLimitError(error)) {
-            await sleep(750);
-            continue;
-          }
-          if (isModelNotFoundError(error)) continue;
-          if (isAuthError(error)) break;
-          
-          continue;
-        }
+  for (const model of uniqueModels) {
+    try {
+      // console.log(`Tentando modelo: ${model}...`);
+      return await actionCallback(model);
+    } catch (error) {
+      const msg = error.message || "";
+      
+      // Se for erro de cota (429), esperamos um pouco e tentamos o próximo
+      if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        console.warn(`⚠️ ${model} atingiu o limite (429). Alternando...`);
+        await sleep(1000); // Backoff curto para trocar de modelo rápido
+        continue;
       }
+
+      // Se o modelo não existir (404), vai para o próximo
+      if (msg.includes("404") || msg.includes("not found")) {
+        console.warn(`⚠️ ${model} não disponível para sua chave API. Alternando...`);
+        continue;
+      }
+
+      // Se for outro erro, lançamos para ser tratado na rota
+      throw error;
     }
   }
 
-  throw lastError || new Error("Todos os modelos de IA falharam.");
+  throw new Error("Todos os modelos de IA falharam ou estão ocupados.");
 }
 
 // --- AÇÕES ---
 
-async function handleGenerateQuiz(client, modelName, { topic, difficulty, numberOfQuestions }) {
+async function handleGenerateQuiz(ai, modelName, { topic, difficulty, numberOfQuestions }) {
+  // Configuração para garantir JSON mesmo em modelos antigos
   const prompt = `Você é um gerador de questões JSON.
   Tarefa: Criar ${numberOfQuestions} questões sobre "${topic}" (${difficulty}).
   
@@ -395,26 +136,44 @@ async function handleGenerateQuiz(client, modelName, { topic, difficulty, number
       "explanation": "Explicação breve"
     }
   ]`;
-
-  return await client.generateJson({ model: modelName, prompt });
-}
-
-async function handleAskTutor(client, modelName, { history, message }) {
-  const text = await client.chat({
+  
+  const response = await ai.models.generateContent({
     model: modelName,
-    systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown (negrito, listas).",
-    history,
-    message
+    contents: prompt,
+    config: { 
+      responseMimeType: "application/json", 
+      safetySettings: SAFETY_SETTINGS 
+    }
   });
-
-  if (!text || text.trim() === "") {
-    return { text: "⚠️ A IA recebeu sua mensagem mas não gerou texto. Tente reformular." };
-  }
-
-  return { text };
+  
+  const jsonStr = extractJSON(response.text);
+  return JSON.parse(jsonStr);
 }
 
-async function handleGenerateMaterials(client, modelName, { count }) {
+async function handleAskTutor(ai, modelName, { history, message }) {
+  // Limita contexto para economizar tokens e evitar erros em modelos com janela pequena
+  const limitedHistory = (history || []).slice(-6); 
+  
+  const chat = ai.chats.create({
+    model: modelName,
+    history: limitedHistory,
+    config: {
+      systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown (negrito, listas).",
+      safetySettings: SAFETY_SETTINGS
+    }
+  });
+  
+  const result = await chat.sendMessage({ message });
+  
+  // Tratamento para respostas vazias
+  if (!result.text || result.text.trim() === "") {
+     return { text: "⚠️ A IA recebeu sua mensagem mas não gerou texto. Tente reformular." };
+  }
+  
+  return { text: result.text };
+}
+
+async function handleGenerateMaterials(ai, modelName, { count }) {
   const prompt = `Liste ${count} materiais de estudo sobre concursos.
   Format: JSON Array.
   Types: "PDF" ou "ARTICLE". (NO VIDEO).
@@ -430,10 +189,17 @@ async function handleGenerateMaterials(client, modelName, { count }) {
     }
   ]`;
 
-  return await client.generateJson({ model: modelName, prompt });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+  });
+
+  return JSON.parse(extractJSON(response.text));
 }
 
-async function handleGenerateMaterialContent(client, modelName, { material }) {
+async function handleGenerateMaterialContent(ai, modelName, { material }) {
+  // Sem JSON mode aqui, queremos Markdown texto livre
   const prompt = `Gere o conteúdo completo de uma apostila/artigo sobre: "${material.title}".
   Use Markdown.
   Estrutura:
@@ -442,11 +208,16 @@ async function handleGenerateMaterialContent(client, modelName, { material }) {
   - Exemplos
   - Conclusão`;
   
-  const content = await client.generateText({ model: modelName, prompt });
-  return { content };
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: { safetySettings: SAFETY_SETTINGS }
+  });
+
+  return { content: response.text };
 }
 
-async function handleGenerateRoutine(client, modelName, { targetExam, hours, subjects }) {
+async function handleGenerateRoutine(ai, modelName, { targetExam, hours, subjects }) {
   const prompt = `Crie uma rotina de estudos JSON para ${targetExam} (${hours}h/dia).
   Foco: ${subjects}.
   
@@ -463,16 +234,28 @@ async function handleGenerateRoutine(client, modelName, { targetExam, hours, sub
     ]
   }`;
 
-  return await client.generateJson({ model: modelName, prompt });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+  });
+
+  return JSON.parse(extractJSON(response.text));
 }
 
-async function handleUpdateRadar(client, modelName) {
+async function handleUpdateRadar(ai, modelName) {
   const prompt = `Liste 5 concursos públicos brasileiros em destaque recentemente.
   JSON Array.
   Schema:
   [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
 
-  return await client.generateJson({ model: modelName, prompt });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: { responseMimeType: "application/json", safetySettings: SAFETY_SETTINGS }
+  });
+
+  return JSON.parse(extractJSON(response.text));
 }
 
 // --- ROTAS ---
@@ -481,31 +264,29 @@ app.post('/api/gemini', async (req, res) => {
   const { action, payload } = req.body;
   
   try {
+    const ai = getAI();
     let result;
-    const release = await aiSemaphore.acquire();
-    try {
-      await runWithFallback(async ({ client, model }) => {
-          switch (action) {
-              case 'generateQuiz': result = await handleGenerateQuiz(client, model, payload); break;
-              case 'askTutor': result = await handleAskTutor(client, model, payload); break;
-              case 'generateMaterials': result = await handleGenerateMaterials(client, model, payload); break;
-              case 'generateMaterialContent': result = await handleGenerateMaterialContent(client, model, payload); break;
-              case 'generateRoutine': result = await handleGenerateRoutine(client, model, payload); break;
-              case 'updateRadar': result = await handleUpdateRadar(client, model); break;
-              default: throw new Error("Ação inválida");
-          }
-      });
-    } finally {
-      release();
-    }
+
+    await runWithModelFallback(ai, async (modelName) => {
+        // console.log(`[Executando] ${action} com ${modelName}`);
+        switch (action) {
+            case 'generateQuiz': result = await handleGenerateQuiz(ai, modelName, payload); break;
+            case 'askTutor': result = await handleAskTutor(ai, modelName, payload); break;
+            case 'generateMaterials': result = await handleGenerateMaterials(ai, modelName, payload); break;
+            case 'generateMaterialContent': result = await handleGenerateMaterialContent(ai, modelName, payload); break;
+            case 'generateRoutine': result = await handleGenerateRoutine(ai, modelName, payload); break;
+            case 'updateRadar': result = await handleUpdateRadar(ai, modelName); break;
+            default: throw new Error("Ação inválida");
+        }
+    });
 
     res.json(result);
 
   } catch (error) {
     console.error(`[Erro API] ${action}:`, error.message);
     
-    if (error.message.includes("API_KEY") || error.message.includes("Unauthorized") || error.message.includes("forbidden")) {
-      return res.status(500).json({ error: "Chave API inválida ou não configurada (Render env vars)." });
+    if (error.message.includes("API_KEY")) {
+      return res.status(500).json({ error: "Chave API inválida ou não configurada." });
     }
     
     // Tratamento genérico para erros de JSON parse (comum em IAs instáveis)
