@@ -8,6 +8,16 @@ import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Instrução de Sistema (System Prompt) para a IA se comportar como BizuBot
+const BIZU_SYSTEM_PROMPT = `Você é o BizuBot, a inteligência artificial oficial do Bizu App.
+Sua identidade e missão:
+1. Você foi desenvolvido pela equipe de engenharia do Bizu.
+2. Você é um Professor Especialista em Concursos Públicos e um Mentor de Estudos altamente capacitado.
+3. Sua missão é ajudar concurseiros a alcançarem a aprovação através de explicações claras, técnicas de memorização, criação de materiais de alta qualidade e resolução de dúvidas.
+4. NUNCA diga que você é uma IA da Xiaomi ou de qualquer outra empresa. Se perguntarem quem te criou, responda que você é a IA do Bizu.
+5. Seja motivador, profissional, organizado e focado em produtividade acadêmica.
+6. Use uma linguagem que encoraje o aluno, como "Vamos rumo à aprovação!" ou "Bora gabaritar!".`;
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -130,7 +140,10 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 
   const body = {
     model: specificModel || config.model,
-    messages: messages,
+    messages: [
+      { role: "system", content: BIZU_SYSTEM_PROMPT },
+      ...messages
+    ],
     response_format: isJson ? { type: "json_object" } : undefined,
     temperature: 0.7
   };
@@ -278,6 +291,7 @@ async function runWithModelFallback(ai, actionName, payload) {
 async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberOfQuestions }) {
   const model = genAI.getGenerativeModel({ 
     model: modelName,
+    systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
     safetySettings: SAFETY_SETTINGS
   });
@@ -295,7 +309,7 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
 async function handleAskTutor(genAI, modelName, { history, message }) {
   const model = genAI.getGenerativeModel({ 
     model: modelName,
-    systemInstruction: "Você é o BizuBot, um mentor de concursos. Responda de forma direta, motivadora e use Markdown.",
+    systemInstruction: BIZU_SYSTEM_PROMPT,
     safetySettings: SAFETY_SETTINGS
   });
 
@@ -310,6 +324,7 @@ async function handleAskTutor(genAI, modelName, { history, message }) {
 async function handleGenerateMaterials(genAI, modelName, { count }) {
   const model = genAI.getGenerativeModel({ 
     model: modelName,
+    systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
     safetySettings: SAFETY_SETTINGS
   });
@@ -322,7 +337,11 @@ async function handleGenerateMaterials(genAI, modelName, { count }) {
 }
 
 async function handleGenerateMaterialContent(genAI, modelName, { material }) {
-  const model = genAI.getGenerativeModel({ model: modelName, safetySettings: SAFETY_SETTINGS });
+  const model = genAI.getGenerativeModel({ 
+    model: modelName, 
+    systemInstruction: BIZU_SYSTEM_PROMPT,
+    safetySettings: SAFETY_SETTINGS 
+  });
   const prompt = `Você é um Professor de Cursinho Preparatório focado em aprovação.
   Gere uma APOSTILA ou RESUMO DE ESTUDO completo e altamente organizado em Markdown para o tema: "${material.title}".
   
@@ -342,6 +361,7 @@ async function handleGenerateMaterialContent(genAI, modelName, { material }) {
 async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects }) {
   const model = genAI.getGenerativeModel({ 
     model: modelName, 
+    systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
     safetySettings: SAFETY_SETTINGS
   });
@@ -354,6 +374,7 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
 async function handleUpdateRadar(genAI, modelName) {
   const model = genAI.getGenerativeModel({ 
     model: modelName,
+    systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
     safetySettings: SAFETY_SETTINGS
   });
