@@ -336,7 +336,9 @@ const Materials: React.FC = () => {
       {/* Filters */}
       <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 flex flex-col md:flex-row gap-2">
         <div className="relative flex-grow">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} strokeWidth={3} />
+          <div className="absolute left-4 inset-y-0 flex items-center pointer-events-none">
+            <Search className="text-slate-400" size={20} strokeWidth={3} />
+          </div>
           <input
             type="text"
             placeholder="Buscar material..."

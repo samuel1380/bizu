@@ -100,7 +100,9 @@ const Schedule: React.FC = () => {
                 Horas por dia disponíveis
               </label>
               <div className="relative">
-                <Clock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <div className="absolute left-5 inset-y-0 flex items-center pointer-events-none">
+                  <Clock className="text-slate-400" size={20} />
+                </div>
                 <input 
                   type="number" 
                   min={1}

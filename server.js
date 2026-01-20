@@ -290,17 +290,27 @@ async function runWithModelFallback(ai, actionName, payload) {
             Use Markdown rico: negrito, tabelas, listas e blocos de citação. Foque em clareza e organização para impressão.`;
           } else if (actionName === 'generateRoutine') {
             prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
-            Crie um CRONOGRAMA DE ESTUDO personalizado para o concurso: "${payload.targetExam}".
+            Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${payload.targetExam}".
             Disponibilidade: ${payload.hours} horas por dia.
             Matérias: ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
             
             REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
-            1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos, NUNCA 30 minutos ou mais.
+            1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos.
             2. TEORIA: Blocos de teoria devem ter entre 40 a 60 minutos.
             3. REVISÃO: Blocos de revisão rápida devem ter de 15 a 30 minutos.
             4. COERÊNCIA: Garanta que a soma das durações das tarefas não ultrapasse a disponibilidade de ${payload.hours}h diárias.
             
-            Schema JSON: {"title": "Nome do Plano", "description": "Resumo da estratégia", "schedule": [{"subject": "Nome", "duration": "tempo (ex: 15min, 1h)", "activity": "Teoria/Exercícios/Revisão"}]}`;
+            Schema JSON: {
+              "title": "Nome do Plano",
+              "description": "Resumo da estratégia",
+              "weekSchedule": [
+                {
+                  "day": "Segunda-feira",
+                  "focus": "Foco do dia",
+                  "tasks": [{"subject": "Matéria", "duration": "tempo", "activity": "O que fazer"}]
+                }
+              ]
+            }`;
             isJson = true;
           } else if (actionName === 'updateRadar') {
             prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
@@ -446,23 +456,33 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
   });
 
   const prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
-  Crie um CRONOGRAMA DE ESTUDO personalizado para o concurso: "${targetExam}".
+  Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${targetExam}".
   Disponibilidade: ${hours} horas por dia.
   Matérias: ${Array.isArray(subjects) ? subjects.join(", ") : subjects}.
   
   REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
-  1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos, NUNCA 30 minutos ou mais.
+  1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos.
   2. TEORIA: Blocos de teoria devem ter entre 40 a 60 minutos.
   3. REVISÃO: Blocos de revisão rápida devem ter de 15 a 30 minutos.
   4. COERÊNCIA: Garanta que a soma das durações das tarefas não ultrapasse a disponibilidade de ${hours}h diárias.
   
   ESTRATÉGIA DE MENTORIA:
-  1. CICLOS: Não use dias da semana fixos, use "Ciclos" ou "Sessões".
+  1. ESTRUTURA SEMANAL: O JSON deve conter um array "weekSchedule" com 7 dias (Segunda a Domingo).
   2. EQUILÍBRIO: Distribua as horas baseando-se na complexidade das matérias.
-  3. REVISÕES: Inclua blocos específicos para Revisão Espaçada (24h, 7d, 30d).
+  3. REVISÕES: Inclua blocos específicos para Revisão Espaçada.
   
   Responda APENAS o JSON.
-  Schema: {"title": "Nome do Plano", "description": "Resumo da estratégia", "schedule": [{"subject": "Nome", "duration": "tempo (ex: 15min, 1h)", "activity": "Teoria/Exercícios/Revisão"}]}`;
+  Schema: {
+    "title": "Nome do Plano",
+    "description": "Resumo da estratégia",
+    "weekSchedule": [
+      {
+        "day": "Segunda-feira",
+        "focus": "Foco do dia",
+        "tasks": [{"subject": "Matéria", "duration": "tempo", "activity": "O que fazer"}]
+      }
+    ]
+  }`;
   
   const result = await model.generateContent(prompt);
   const text = result.response.text();

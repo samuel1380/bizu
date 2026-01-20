@@ -210,7 +210,7 @@ const Mentor: React.FC = () => {
                     placeholder="Digite sua mensagem..."
                     className="w-full pl-5 pr-12 py-4 bg-slate-100 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-slate-700 placeholder:text-slate-400 transition-all"
                 />
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
+                <div className="absolute right-4 inset-y-0 flex items-center text-slate-300 pointer-events-none">
                     <MessageSquare size={20} />
                 </div>
            </div>
