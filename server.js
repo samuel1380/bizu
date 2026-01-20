@@ -18,8 +18,10 @@ Sua identidade e missão:
 5. Seja motivador, profissional, organizado e focado em produtividade acadêmica.
 
 DIRETRIZES PARA MATERIAIS (APOSTILAS E RESUMOS):
-- Crie conteúdos densos, profundos e muito bem estruturados.
-- Use Markdown avançado (tabelas, negritos, listas, blocos de citação).
+- Crie conteúdos densos, profundos e tecnicamente impecáveis.
+- RIGOR GRAMATICAL: Em materiais de Português, siga a norma culta e gramáticos renomados (Bechara, Cunha). Verifique classificações (ex: não confunda conjunções coordenativas com subordinativas).
+- TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO" para Conjunções Integrantes, Macete do "O QUAL" para Pronomes Relativos).
+- Use Markdown avançado (tabelas densas, negritos para termos-chave, listas, blocos de citação).
 - Inclua sempre: Contextualização Jurídica/Técnica, Doutrina, Jurisprudência (se aplicável) e "Bizus de Prova".
 
 DIRETRIZES PARA QUIZ:
@@ -157,7 +159,8 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
       ...messages
     ],
     response_format: isJson ? { type: "json_object" } : undefined,
-    temperature: 0.7
+    temperature: 0.7,
+    max_tokens: 4000
   };
 
   try {
@@ -422,27 +425,32 @@ async function handleGenerateMaterialContent(genAI, modelName, { material }) {
   const model = genAI.getGenerativeModel({ 
     model: modelName, 
     systemInstruction: BIZU_SYSTEM_PROMPT,
+    generationConfig: {
+      temperature: 0.4, // Menor temperatura para maior precisão técnica
+      maxOutputTokens: 4000, // Garante que o material seja longo e completo
+    },
     safetySettings: SAFETY_SETTINGS 
   });
-  const prompt = `Você é um Professor e Autor de Materiais Didáticos de Alto Nível.
-  Sua missão é produzir uma APOSTILA ACADÊMICA e PROFISSIONAL sobre: "${material.title}".
+  const prompt = `Você é um Professor e Autor de Materiais Didáticos de Alto Nível para Concursos de Elite.
+  Sua missão é produzir uma APOSTILA ACADÊMICA, EXAUSTIVA e PROFISSIONAL sobre: "${material.title}".
   
-  DIRETRIZES DE ESTILO:
-  - Tom sério, técnico e focado em aprovação.
-  - Formatação Markdown IMPECÁVEL.
-  - NÃO use excesso de emojis. Use apenas o necessário para organização.
-  - O conteúdo deve ser denso e útil para quem vai fazer concursos de alto nível (Juiz, Auditor, Delegado, etc.).
+  REGRAS TÉCNICAS INEGOCIÁVEIS:
+  1. PRECISÃO TOTAL: Se o tema for Língua Portuguesa, use a Nomenclatura Gramatical Brasileira (NGB). Diferencie rigorosamente Coordenativas de Subordinativas.
+  2. MACETES DE OURO: Para Conjunções Integrantes (que/se), explique o macete de substituir a oração por "ISSO". Para Pronomes Relativos, o macete de substituir por "O QUAL".
+  3. VÍCIOS DE LINGUAGEM: Defina corretamente Pleonasmo Vicioso, Ambiguidade (Anfibologia), Anacoluto, Zeugma e Solecismo com exemplos reais de prova.
+  4. NÃO TRUNCAR: O texto deve ter começo, meio e fim. Se o tema for vasto, priorize a profundidade nos pontos mais cobrados.
   
-  ESTRUTURA OBRIGATÓRIA (Siga exatamente esta ordem):
-  1. # Título Completo do Material
-  2. ## 1. Introdução e Contextualização
-  3. ## 2. Desenvolvimento Teórico (Use sub-tópicos ### se necessário)
-  4. ## 3. Tabela Comparativa ou Quadro Sinótico (Sempre inclua pelo menos uma tabela | Coluna |)
-  5. ## 4. Bizus de Prova e Dicas de Ouro (Use > Blockquotes)
-  6. ## 5. Questão Exemplo de Concurso (Comentada passo a passo)
-  7. ## 6. Checklist de Revisão (Bullet points)
+  ESTRUTURA OBRIGATÓRIA:
+  1. # Título Estratégico
+  2. ## 1. Introdução e Importância para Provas (Explique como as bancas cobram)
+  3. ## 2. Desenvolvimento Teórico Aprofundado (Mínimo de 3 sub-tópicos ###)
+  4. ## 3. Tabela de Classificação e Exemplos (Tabela Markdown detalhada)
+  5. ## 4. Quadro de Diferenciação (Ex: "Isso" vs "O Qual", "Mas" vs "Mais", etc)
+  6. ## 5. Bizus de Prova e Alertas de Pegadinha (> Blockquotes com foco em FGV/CESPE)
+  7. ## 6. Questão de Concurso Comentada (Inédita ou de Banca)
+  8. ## 7. Resumo em Checklist para Revisão Final
   
-  Inicie o texto diretamente no Título (H1), sem saudações ou textos introdutórios.`;
+  Inicie o texto diretamente no Título (H1). Escreva de forma fluida, sem introduções vazias.`;
   const result = await model.generateContent(prompt);
   return { content: result.response.text() };
 }
