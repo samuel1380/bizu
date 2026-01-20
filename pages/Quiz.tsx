@@ -138,9 +138,11 @@ const Quiz: React.FC = () => {
                   onChange={(e) => setConfig({ ...config, numberOfQuestions: Number(e.target.value) })}
                   className="w-full appearance-none px-5 py-4 rounded-2xl bg-slate-100 border-2 border-slate-200 focus:bg-white focus:border-blue-400 outline-none font-bold text-slate-700 cursor-pointer"
                 >
-                  <option value={3}>3 (Rápido)</option>
-                  <option value={5}>5 (Padrão)</option>
-                  <option value={10}>10 (Intenso)</option>
+                  <option value={5}>5 (Rápido)</option>
+                  <option value={10}>10 (Padrão)</option>
+                  <option value={20}>20 (Intenso)</option>
+                  <option value={50}>50 (Simulado)</option>
+                  <option value={100}>100 (Maratona)</option>
                 </select>
               </div>
             </div>

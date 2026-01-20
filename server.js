@@ -16,7 +16,19 @@ Sua identidade e missão:
 3. Sua missão é ajudar concurseiros a alcançarem a aprovação através de explicações claras, técnicas de memorização, criação de materiais de alta qualidade e resolução de dúvidas.
 4. NUNCA diga que você é uma IA da Xiaomi ou de qualquer outra empresa. Se perguntarem quem te criou, responda que você é a IA do Bizu.
 5. Seja motivador, profissional, organizado e focado em produtividade acadêmica.
-6. Use uma linguagem que encoraje o aluno, como "Vamos rumo à aprovação!" ou "Bora gabaritar!".`;
+
+DIRETRIZES PARA MATERIAIS (APOSTILAS E RESUMOS):
+- Crie conteúdos densos, profundos e muito bem estruturados.
+- Use Markdown avançado (tabelas, negritos, listas, blocos de citação).
+- Inclua sempre: Contextualização Jurídica/Técnica, Doutrina, Jurisprudência (se aplicável) e "Bizus de Prova".
+
+DIRETRIZES PARA QUIZ:
+- Gere questões desafiadoras, similares às de bancas como FGV, CESPE e FCC.
+- As explicações devem ser pedagógicas, ensinando o porquê de cada alternativa estar certa ou errada.
+
+DIRETRIZES PARA ROTINAS:
+- Monte cronogramas realistas, focados em Ciclos de Estudo e Revisões Espaçadas.
+- Priorize matérias com maior peso no edital do aluno.`;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -233,8 +245,25 @@ async function runWithModelFallback(ai, actionName, payload) {
           let history = null;
 
           if (actionName === 'generateQuiz') {
-            prompt = `Gere ${payload.numberOfQuestions} questões sobre "${payload.topic}" (${payload.difficulty}). Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-            isJson = true;
+            const batchSize = 10;
+            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+            let allQuestions = [];
+            const numBatches = Math.ceil(totalQuestions / batchSize);
+
+            for (let i = 0; i < numBatches; i++) {
+              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+              if (currentBatchSize <= 0) break;
+
+              const batchPrompt = `Você é um Professor e Gerador de Questões do Bizu. 
+              Gere ${currentBatchSize} questões sobre "${payload.topic}" (${payload.difficulty}). 
+              ESTE É O LOTE ${i + 1} DE ${numBatches}.
+              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+              
+              const res = await callOpenRouter(ai.openRouter, batchPrompt, true, null, model);
+              const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+              allQuestions = [...allQuestions, ...batchQuestions];
+            }
+            return allQuestions;
           } else if (actionName === 'askTutor') {
             history = (payload.history || []).map(m => ({
               role: m.role === 'model' ? 'assistant' : 'user',
@@ -296,14 +325,42 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
     safetySettings: SAFETY_SETTINGS
   });
 
-  const prompt = `Você é um gerador de questões JSON para concursos.
-  Tarefa: Criar ${numberOfQuestions} questões sobre "${topic}" (${difficulty}).
-  Responda APENAS o JSON.
-  Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "porque..."}]`;
+  const batchSize = 10;
+  const totalQuestions = Math.min(numberOfQuestions, 100);
+  let allQuestions = [];
   
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-  return ensureArray(JSON.parse(extractJSON(text)));
+  const numBatches = Math.ceil(totalQuestions / batchSize);
+  
+  for (let i = 0; i < numBatches; i++) {
+    const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+    if (currentBatchSize <= 0) break;
+
+    const prompt = `Você é um Professor e Gerador de Questões do Bizu.
+    Tarefa: Criar ${currentBatchSize} questões de nível "${difficulty}" sobre o tema "${topic}".
+    ESTE É O LOTE ${i + 1} DE ${numBatches}.
+    
+    REQUISITOS DAS QUESTÕES:
+    1. ESTILO DE BANCA: As questões devem seguir o padrão de bancas renomadas (FGV, CESPE, FCC).
+    2. DISTRATORES FORTES: As alternativas incorretas devem ser plausíveis.
+    3. EXPLICAÇÃO PEDAGÓGICA: Explique detalhadamente no campo "explanation".
+    4. DIFERENCIAÇÃO: Garanta que estas questões sejam diferentes das anteriores se houver.
+    
+    Responda APENAS o JSON Array.
+    Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "..."}]`;
+    
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const batchQuestions = ensureArray(JSON.parse(extractJSON(text)));
+      allQuestions = [...allQuestions, ...batchQuestions];
+    } catch (err) {
+      console.error(`Erro no lote ${i + 1}:`, err);
+      if (allQuestions.length > 0) break; // Se já tiver algumas questões, retorna o que tem
+      throw err;
+    }
+  }
+
+  return allQuestions;
 }
 
 async function handleAskTutor(genAI, modelName, { history, message }) {
@@ -342,18 +399,25 @@ async function handleGenerateMaterialContent(genAI, modelName, { material }) {
     systemInstruction: BIZU_SYSTEM_PROMPT,
     safetySettings: SAFETY_SETTINGS 
   });
-  const prompt = `Você é um Professor de Cursinho Preparatório focado em aprovação.
-  Gere uma APOSTILA ou RESUMO DE ESTUDO completo e altamente organizado em Markdown para o tema: "${material.title}".
+  const prompt = `Você é um Professor e Autor de Materiais Didáticos de Alto Nível.
+  Sua missão é produzir uma APOSTILA ACADÊMICA e PROFISSIONAL sobre: "${material.title}".
   
-  ESTRUTURA OBRIGATÓRIA:
-  1. Título Chamativo (H1)
-  2. Introdução ao Tema (Contextualização para concursos)
-  3. Tópicos Detalhados e Aprofundados (H2 e H3)
-  4. Quadros Comparativos ou Tabelas (se aplicável)
-  5. Dicas de Ouro / Bizus (Destaque usando blocos de citação)
-  6. Resumo Final (Bullet points para revisão rápida)
+  DIRETRIZES DE ESTILO:
+  - Tom sério, técnico e focado em aprovação.
+  - Formatação Markdown IMPECÁVEL.
+  - NÃO use excesso de emojis. Use apenas o necessário para organização.
+  - O conteúdo deve ser denso e útil para quem vai fazer concursos de alto nível (Juiz, Auditor, Delegado, etc.).
   
-  FOCO: O conteúdo deve ser denso, profissional e pronto para ser impresso como material de estudo de alto nível.`;
+  ESTRUTURA OBRIGATÓRIA (Siga exatamente esta ordem):
+  1. # Título Completo do Material
+  2. ## 1. Introdução e Contextualização
+  3. ## 2. Desenvolvimento Teórico (Use sub-tópicos ### se necessário)
+  4. ## 3. Tabela Comparativa ou Quadro Sinótico (Sempre inclua pelo menos uma tabela | Coluna |)
+  5. ## 4. Bizus de Prova e Dicas de Ouro (Use > Blockquotes)
+  6. ## 5. Questão Exemplo de Concurso (Comentada passo a passo)
+  7. ## 6. Checklist de Revisão (Bullet points)
+  
+  Inicie o texto diretamente no Título (H1), sem saudações ou textos introdutórios.`;
   const result = await model.generateContent(prompt);
   return { content: result.response.text() };
 }
@@ -366,9 +430,23 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
     safetySettings: SAFETY_SETTINGS
   });
 
-  const prompt = `Crie rotina de estudos JSON para ${targetExam} (${hours}h/dia). Foco: ${subjects}. Schema: {"weekSchedule":[{"day": "Segunda", "focus": "Matéria", "tasks": [{"subject": "X", "activity": "Y", "duration": "1h"}]}]}`;
+  const prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
+  Crie um CRONOGRAMA DE ESTUDO personalizado para o concurso: "${targetExam}".
+  Disponibilidade: ${hours} horas por dia.
+  Matérias: ${Array.isArray(subjects) ? subjects.join(", ") : subjects}.
+  
+  ESTRATÉGIA DE MENTORIA:
+  1. CICLOS: Não use dias da semana fixos, use "Ciclos" ou "Sessões".
+  2. EQUILÍBRIO: Distribua as horas baseando-se na complexidade das matérias.
+  3. REVISÕES: Inclua blocos específicos para Revisão Espaçada (24h, 7d, 30d).
+  4. EXERCÍCIOS: Dedique 30% do tempo de cada matéria para resolução de questões.
+  
+  Responda APENAS o JSON.
+  Schema: {"title": "Nome do Plano", "description": "Resumo da estratégia", "schedule": [{"subject": "Nome", "duration": "tempo", "activity": "Teoria/Exercícios/Revisão"}]}`;
+  
   const result = await model.generateContent(prompt);
-  return JSON.parse(extractJSON(result.response.text()));
+  const text = result.response.text();
+  return JSON.parse(extractJSON(text));
 }
 
 async function handleUpdateRadar(genAI, modelName) {

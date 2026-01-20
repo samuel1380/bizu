@@ -4,6 +4,7 @@ import { generateStudyMaterials, generateMaterialContent } from '../services/gem
 import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
 import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Função para injetar o script do html2pdf.js dinamicamente
 const loadHtml2Pdf = () => {
@@ -108,8 +109,13 @@ const Materials: React.FC = () => {
     try {
       const html2pdf = (await loadHtml2Pdf()) as any;
       
-      // Captura o conteúdo Markdown renderizado
-      const proseContent = document.querySelector('.prose')?.innerHTML || '';
+      // Captura o conteúdo Markdown renderizado do elemento específico
+      const contentElement = document.getElementById('material-content-view');
+      const proseContent = contentElement?.querySelector('.prose')?.innerHTML || '';
+      
+      if (!proseContent) {
+        throw new Error("Não foi possível capturar o conteúdo para o PDF.");
+      }
       
       // Cria um elemento temporário para o PDF com estilos embutidos para garantir consistência
       const element = document.createElement('div');
@@ -117,83 +123,110 @@ const Materials: React.FC = () => {
       element.innerHTML = `
         <style>
           .pdf-container {
-            padding: 20px;
+            padding: 40px;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: #1e293b;
             line-height: 1.6;
             background: white;
           }
           .pdf-header {
-            border-bottom: 4px solid #2563eb;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            text-align: left;
+            border-bottom: 5px solid #2563eb;
+            margin-bottom: 40px;
+            padding-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
           }
-          .pdf-title {
-            font-size: 32px;
+          .pdf-header-text h1 {
+            font-size: 36px;
             font-weight: 900;
             margin: 0;
             color: #0f172a;
             line-height: 1.1;
-          }
-          .pdf-subtitle {
-            color: #64748b;
-            font-weight: 800;
-            margin: 10px 0 0 0;
             text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.05em;
+          }
+          .pdf-header-text p {
+            color: #2563eb;
+            font-weight: 800;
+            margin: 8px 0 0 0;
+            font-size: 14px;
+            letter-spacing: 0.1em;
           }
           .pdf-content {
-            font-size: 14px;
+            font-size: 15px;
+            color: #334155;
           }
           /* Estilização básica para simular o 'prose' do Tailwind */
-          .pdf-content h1 { font-size: 24px; font-weight: 800; margin-top: 24px; margin-bottom: 16px; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
-          .pdf-content h2 { font-size: 20px; font-weight: 800; margin-top: 20px; margin-bottom: 12px; color: #1e293b; }
-          .pdf-content h3 { font-size: 18px; font-weight: 700; margin-top: 16px; margin-bottom: 8px; color: #334155; }
-          .pdf-content p { margin-bottom: 12px; }
-          .pdf-content ul, .pdf-content ol { margin-bottom: 16px; padding-left: 20px; }
-          .pdf-content li { margin-bottom: 4px; }
+          .pdf-content h1 { font-size: 28px; font-weight: 900; margin-top: 35px; margin-bottom: 20px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          .pdf-content h2 { font-size: 22px; font-weight: 800; margin-top: 30px; margin-bottom: 15px; color: #1e293b; display: flex; align-items: center; }
+          .pdf-content h3 { font-size: 19px; font-weight: 700; margin-top: 25px; margin-bottom: 12px; color: #334155; }
+          .pdf-content p { margin-bottom: 15px; text-align: justify; }
+          .pdf-content ul, .pdf-content ol { margin-bottom: 20px; padding-left: 25px; }
+          .pdf-content li { margin-bottom: 8px; }
           .pdf-content blockquote { 
-            border-left: 4px solid #3b82f6; 
-            background: #eff6ff; 
-            padding: 12px 20px; 
-            margin: 20px 0; 
+            border-left: 6px solid #2563eb; 
+            background: #f8fafc; 
+            padding: 15px 25px; 
+            margin: 25px 0; 
             font-style: italic;
-            border-radius: 0 8px 8px 0;
+            border-radius: 4px;
+            color: #1e293b;
           }
-          .pdf-content table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
-          .pdf-content th { background: #f8fafc; text-align: left; padding: 10px; border: 1px solid #e2e8f0; font-weight: 700; }
-          .pdf-content td { padding: 10px; border: 1px solid #e2e8f0; }
+          .pdf-content table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 30px 0; 
+            font-size: 13px; 
+            table-layout: auto;
+          }
+          .pdf-content th { 
+            background: #2563eb; 
+            text-align: left; 
+            padding: 12px; 
+            border: 1px solid #1e40af; 
+            font-weight: 800; 
+            color: white; 
+          }
+          .pdf-content td { 
+            padding: 12px; 
+            border: 1px solid #e2e8f0; 
+            background: white; 
+            vertical-align: top;
+          }
+          .pdf-content tr:nth-child(even) td { background: #f8fafc; }
+          .pdf-content strong { color: #0f172a; font-weight: 800; }
           .pdf-footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 2px solid #f1f5f9;
             text-align: center;
-            font-size: 11px;
+            font-size: 12px;
             color: #94a3b8;
-            font-weight: bold;
+            font-weight: 700;
+            letter-spacing: 0.05em;
           }
-          /* Forçar quebras de página evitarem cortar títulos ou blocos */
+          /* Forçar quebras de página */
           h1, h2, h3 { page-break-after: avoid; }
           blockquote, table, pre { page-break-inside: avoid; }
         </style>
         <div class="pdf-container">
           <div class="pdf-header">
-            <h1 class="pdf-title">${selectedMaterial.title}</h1>
-            <p class="pdf-subtitle">Bizu App • Material de Estudo para Concursos</p>
+            <div class="pdf-header-text">
+              <h1>${selectedMaterial.title}</h1>
+              <p>BIZU APP • MATERIAL DE ESTUDO EXCLUSIVO</p>
+            </div>
           </div>
           <div class="pdf-content">
             ${proseContent}
           </div>
           <div class="pdf-footer">
-            ESTE MATERIAL É PARTE INTEGRANTE DO BIZU APP • © ${new Date().getFullYear()} • TODOS OS DIREITOS RESERVADOS
+            ESTE MATERIAL É PARTE INTEGRANTE DO ECOSSISTEMA BIZU • © ${new Date().getFullYear()} • PROIBIDA REPRODUÇÃO
           </div>
         </div>
       `;
 
       const opt = {
-        margin: [15, 15, 15, 15],
+        margin: [10, 10, 10, 10],
         filename: `Bizu_Apostila_${selectedMaterial.title.replace(/\s+/g, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
@@ -201,26 +234,23 @@ const Materials: React.FC = () => {
           useCORS: true, 
           letterRendering: true,
           scrollY: 0,
-          windowWidth: 800 // Fixa a largura para garantir que o layout não quebre como se fosse mobile
+          windowWidth: 800
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
-      // Adiciona o elemento ao corpo temporariamente para o html2canvas conseguir renderizar corretamente
       document.body.appendChild(element);
       element.style.position = 'absolute';
       element.style.left = '-9999px';
       element.style.top = '0';
-      element.style.width = '800px'; // Largura fixa para o canvas
+      element.style.width = '800px';
 
       await html2pdf().set(opt).from(element).save();
-      
-      // Remove o elemento temporário
       document.body.removeChild(element);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao gerar PDF:", error);
-      alert("Erro ao gerar PDF. Tente usar o botão de Imprimir.");
+      alert(error.message || "Erro ao gerar PDF. Tente usar o botão de Imprimir.");
     } finally {
       setDownloadingPDF(false);
     }
@@ -388,15 +418,38 @@ const Materials: React.FC = () => {
             </div>
 
             {/* Content Area */}
-            <div className="flex-grow overflow-y-auto p-4 md:p-12 bg-slate-50 print:bg-white print:p-0 print:overflow-visible">
+            <div id="material-content-view" className="flex-grow overflow-y-auto p-4 md:p-12 bg-slate-50 print:bg-white print:p-0 print:overflow-visible">
               {selectedMaterial.content ? (
-                <div className="prose prose-slate prose-lg max-w-none bg-white p-8 md:p-12 rounded-2xl border-2 border-slate-200 print:border-none print:shadow-none print:p-0">
+                <div className="prose prose-slate prose-lg max-w-none bg-white p-8 md:p-12 rounded-2xl border-2 border-slate-200 shadow-sm print:border-none print:shadow-none print:p-0">
                    {/* Cabeçalho visível apenas no print para dar contexto */}
                    <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
                         <h1 className="text-3xl font-black">{selectedMaterial.title}</h1>
                         <p className="text-slate-600">Material gerado pelo Bizu App</p>
                    </div>
-                   <ReactMarkdown>{selectedMaterial.content}</ReactMarkdown>
+                   <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({node, ...props}) => (
+                        <div className="overflow-x-auto my-8 border-2 border-slate-100 rounded-xl">
+                          <table className="min-w-full divide-y divide-slate-200" {...props} />
+                        </div>
+                      ),
+                      th: ({node, ...props}) => (
+                        <th className="px-4 py-3 bg-slate-50 text-left text-xs font-black text-slate-500 uppercase tracking-wider border-b-2 border-slate-200" {...props} />
+                      ),
+                      td: ({node, ...props}) => (
+                        <td className="px-4 py-3 text-sm text-slate-600 border-b border-slate-100" {...props} />
+                      ),
+                      h1: ({node, ...props}) => <h1 className="text-3xl font-black text-slate-800 mb-6 pb-2 border-b-4 border-blue-500 inline-block" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-2xl font-black text-slate-700 mt-10 mb-4 flex items-center gap-2" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-xl font-bold text-slate-600 mt-6 mb-3" {...props} />,
+                      blockquote: ({node, ...props}) => (
+                        <blockquote className="border-l-8 border-blue-500 bg-blue-50 p-6 my-8 rounded-r-2xl italic text-blue-900 font-medium" {...props} />
+                      ),
+                    }}
+                   >
+                    {selectedMaterial.content}
+                   </ReactMarkdown>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center no-print">
