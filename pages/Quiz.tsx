@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { generateQuizQuestions } from '../services/gemini';
 import { saveQuizResult } from '../services/db';
 import { Question, Difficulty, QuizConfig } from '../types';
@@ -19,11 +19,27 @@ const Quiz: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savingResult, setSavingResult] = useState(false);
   const [isChecked, setIsChecked] = useState(false); // New state to control feedback view
+  const [estimatedSeconds, setEstimatedSeconds] = useState(0);
+
+  // Timer effect for the loading screen
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (loading && estimatedSeconds > 0) {
+      interval = setInterval(() => {
+        setEstimatedSeconds(prev => Math.max(0, prev - 1));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [loading, estimatedSeconds]);
 
   const handleStartQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!config.topic) return;
 
+    // Calcular tempo estimado (aprox. 1.5s por questão devido ao processamento em lote)
+    const totalSeconds = Math.ceil(config.numberOfQuestions * 1.5);
+    setEstimatedSeconds(totalSeconds);
+    
     setLoading(true);
     setError(null);
     try {
@@ -90,6 +106,12 @@ const Quiz: React.FC = () => {
     setError(null);
     setSavingResult(false);
     setLoading(false);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // --- Configuration Screen ---
@@ -169,10 +191,32 @@ const Quiz: React.FC = () => {
   // --- Loading Screen ---
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[500px] text-center">
-        <Loader2 size={64} className="animate-spin text-blue-400 mb-6" />
-        <h3 className="text-2xl font-extrabold text-slate-700 mb-2">Preparando Desafio...</h3>
-        <p className="text-slate-400 font-bold">Aguarde enquanto montamos suas questões.</p>
+      <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white border-2 border-slate-200 rounded-3xl p-8 shadow-sm">
+        <div className="relative mb-8">
+          <Loader2 size={80} className="animate-spin text-blue-500" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Brain size={32} className="text-blue-300 animate-pulse" />
+          </div>
+        </div>
+        
+        <h3 className="text-3xl font-black text-slate-700 mb-4 uppercase tracking-tight">Preparando seu Simulado</h3>
+        
+        <div className="bg-slate-100 px-8 py-6 rounded-2xl border-2 border-slate-200 mb-6">
+          <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mb-2">Tempo Estimado</p>
+          <div className="text-4xl font-black text-blue-600 font-mono">
+            {formatTime(estimatedSeconds)}
+          </div>
+        </div>
+
+        <p className="text-slate-400 font-bold max-w-sm">
+          A IA do BizuBot está gerando {config.numberOfQuestions} questões inéditas para você. Não feche esta página!
+        </p>
+
+        <div className="mt-8 flex gap-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="w-3 h-3 bg-blue-200 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />
+          ))}
+        </div>
       </div>
     );
   }

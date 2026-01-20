@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
-import { generateStudyMaterials, generateMaterialContent } from '../services/gemini';
+import { generateStudyMaterials, generateMaterialContent, createCustomMaterial } from '../services/gemini';
 import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
-import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download } from 'lucide-react';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download, PlusCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -32,6 +32,11 @@ const Materials: React.FC = () => {
   const [selectedMaterial, setSelectedMaterial] = useState<StudyMaterial | null>(null);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+
+  // Custom Material Form
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customTopic, setCustomTopic] = useState('');
+  const [creatingCustom, setCreatingCustom] = useState(false);
 
   useEffect(() => {
     loadMaterials();
@@ -66,6 +71,27 @@ const Materials: React.FC = () => {
       console.error("Error generating more materials", error);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleCreateCustom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customTopic.trim()) return;
+
+    setCreatingCustom(true);
+    try {
+      const newMaterial = await createCustomMaterial(customTopic);
+      await saveMaterial(newMaterial);
+      setMaterials(prev => [newMaterial, ...prev]);
+      setCustomTopic('');
+      setShowCustomForm(false);
+      // Opcional: abrir o material criado imediatamente
+      handleOpenMaterial(newMaterial);
+    } catch (error) {
+      console.error("Erro ao criar material personalizado:", error);
+      alert("Falha ao criar material. Tente novamente.");
+    } finally {
+      setCreatingCustom(false);
     }
   };
 
@@ -283,17 +309,28 @@ const Materials: React.FC = () => {
           <p className="text-slate-400 font-bold">PDFs e Artigos gerados via IA.</p>
         </div>
         
-        <button 
-          onClick={handleGenerateMore} 
-          disabled={generating}
-          className="bg-blue-600 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-wider hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg"
-        >
-            {generating ? (
-              <>CRIANDO... <Loader2 size={18} className="animate-spin" /></>
-            ) : (
-              <>+ GERAR MATERIAL</>
-            )}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setShowCustomForm(true)} 
+            className="bg-emerald-600 text-white px-6 py-3 rounded-2xl border-b-4 border-emerald-800 font-bold uppercase tracking-wider hover:bg-emerald-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 shadow-lg"
+          >
+            <PlusCircle size={20} />
+            <span className="hidden sm:inline">PEDIR APOSTILA</span>
+            <span className="sm:hidden">PEDIR</span>
+          </button>
+
+          <button 
+            onClick={handleGenerateMore} 
+            disabled={generating}
+            className="bg-blue-600 text-white px-6 py-3 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-wider hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg"
+          >
+              {generating ? (
+                <>CRIANDO... <Loader2 size={18} className="animate-spin" /></>
+              ) : (
+                <>+ SUGERIR</>
+              )}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -326,6 +363,55 @@ const Materials: React.FC = () => {
       </div>
 
       {/* Grid */}
+      {showCustomForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-slate-200 animate-in zoom-in-95 duration-300">
+            <div className="p-6 border-b-2 border-slate-100 flex items-center justify-between bg-emerald-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
+                  <PlusCircle size={24} />
+                </div>
+                <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight">Pedir Apostila</h3>
+              </div>
+              <button onClick={() => setShowCustomForm(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={24} strokeWidth={3} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateCustom} className="p-8 space-y-6">
+              <div>
+                <label className="block text-sm font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">
+                  Qual o tema ou assunto do material?
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  placeholder="Ex: Português - Pontuação: Uso do ponto e vírgula, dois-pontos e travessão..."
+                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-0 transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 resize-none"
+                />
+                <p className="mt-3 text-xs text-slate-400 font-bold leading-relaxed">
+                  Dica: Você pode copiar e colar uma tarefa da sua <span className="text-blue-500">Rotina de Estudos</span> aqui para gerar o material exato que precisa!
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={creatingCustom}
+                className="w-full bg-emerald-600 text-white border-b-4 border-emerald-800 rounded-2xl font-black text-lg py-4 hover:bg-emerald-500 active:border-b-0 active:translate-y-1 transition-all uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {creatingCustom ? (
+                  <>CRIANDO ESTRUTURA... <Loader2 size={24} className="animate-spin" /></>
+                ) : (
+                  <>GERAR MATERIAL AGORA</>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {loading && materials.length === 0 ? (
         <div className="text-center py-20">
              <Loader2 size={48} className="animate-spin text-blue-400 mx-auto mb-4" />

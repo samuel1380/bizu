@@ -54,6 +54,15 @@ export const generateMaterialContent = async (material: StudyMaterial): Promise<
   return result.content;
 };
 
+export const createCustomMaterial = async (topic: string): Promise<StudyMaterial> => {
+  const material = await apiCall('createCustomMaterial', { topic });
+  return {
+    ...material,
+    id: crypto.randomUUID(),
+    updatedAt: new Date().toISOString()
+  };
+};
+
 export const generateStudyRoutine = async (targetExam: string, hours: number, subjects: string): Promise<StudyRoutine> => {
   const result = await apiCall('generateRoutine', { targetExam, hours, subjects });
   return {
