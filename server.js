@@ -61,6 +61,7 @@ const MODEL_FALLBACK_LIST = [
 ];
 
 const OPENROUTER_MODELS = [
+  "openai/gpt-oss-120b:free",
   "xiaomi/mimo-v2-flash:free",
   "google/gemini-2.0-flash-exp:free",
   "google/gemini-2.0-flash-001",
