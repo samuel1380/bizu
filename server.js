@@ -84,9 +84,11 @@ const SAFETY_SETTINGS = [
  */
 app.post('/webhooks/hubla', async (req, res) => {
   const event = req.body;
+  const hublaToken = req.headers['x-hubla-token'] || req.headers['authorization'];
 
-  // Log para depuração (remova em produção se desejar)
+  // Log para depuração
   console.log('Evento Hubla recebido:', JSON.stringify(event, null, 2));
+  if (hublaToken) console.log('Token recebido:', hublaToken);
 
   try {
     const email = event.data?.user?.email || event.data?.customer?.email || event.user_email || event.email;
