@@ -305,8 +305,8 @@ const Materials: React.FC = () => {
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-700">Apostilas & Resumos</h1>
-          <p className="text-slate-400 font-bold">PDFs e Artigos gerados via IA.</p>
+          <h1 className="text-3xl font-extrabold text-slate-700 dark:text-slate-100">Apostilas & Resumos</h1>
+          <p className="text-slate-400 dark:text-slate-500 font-bold">PDFs e Artigos gerados via IA.</p>
         </div>
         
         <div className="flex gap-2">
@@ -334,17 +334,17 @@ const Materials: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 flex flex-col md:flex-row gap-2">
+      <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-2">
         <div className="relative flex-grow">
           <div className="absolute left-4 inset-y-0 flex items-center pointer-events-none">
-            <Search className="text-slate-400" size={20} strokeWidth={3} />
+            <Search className="text-slate-400 dark:text-slate-500" size={20} strokeWidth={3} />
           </div>
           <input
             type="text"
             placeholder="Buscar material..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-transparent bg-slate-100 focus:bg-white focus:border-blue-400 outline-none font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-bold"
+            className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-transparent bg-slate-100 dark:bg-slate-700 focus:bg-white dark:focus:bg-slate-600 focus:border-blue-400 outline-none font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 placeholder:font-bold"
           />
         </div>
         <div className="flex items-center gap-2 overflow-x-auto p-1">
@@ -355,7 +355,7 @@ const Materials: React.FC = () => {
               className={`px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-wide whitespace-nowrap border-b-4 transition-all active:border-b-0 active:translate-y-1 ${
                 selectedCategory === cat
                   ? 'bg-blue-600 text-white border-blue-800'
-                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                  : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600'
               }`}
             >
               {cat}
@@ -367,22 +367,22 @@ const Materials: React.FC = () => {
       {/* Grid */}
       {showCustomForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-slate-200 animate-in zoom-in-95 duration-300">
-            <div className="p-6 border-b-2 border-slate-100 flex items-center justify-between bg-emerald-50">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-300">
+            <div className="p-6 border-b-2 border-slate-100 dark:border-slate-700 flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
                   <PlusCircle size={24} />
                 </div>
-                <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight">Pedir Apostila</h3>
+                <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Pedir Apostila</h3>
               </div>
-              <button onClick={() => setShowCustomForm(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowCustomForm(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
                 <X size={24} strokeWidth={3} />
               </button>
             </div>
             
             <form onSubmit={handleCreateCustom} className="p-8 space-y-6">
               <div>
-                <label className="block text-sm font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">
+                <label className="block text-sm font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3 ml-1">
                   Qual o tema ou assunto do material?
                 </label>
                 <textarea
@@ -391,9 +391,9 @@ const Materials: React.FC = () => {
                   value={customTopic}
                   onChange={(e) => setCustomTopic(e.target.value)}
                   placeholder="Ex: Português - Pontuação: Uso do ponto e vírgula, dois-pontos e travessão..."
-                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 focus:ring-0 transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 resize-none"
+                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-emerald-500 focus:ring-0 transition-all outline-none font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-500 resize-none"
                 />
-                <p className="mt-3 text-xs text-slate-400 font-bold leading-relaxed">
+                <p className="mt-3 text-xs text-slate-400 dark:text-slate-500 font-bold leading-relaxed">
                   Dica: Você pode copiar e colar uma tarefa da sua <span className="text-blue-500">Rotina de Estudos</span> aqui para gerar o material exato que precisa!
                 </p>
               </div>
@@ -417,7 +417,7 @@ const Materials: React.FC = () => {
       {loading && materials.length === 0 ? (
         <div className="text-center py-20">
              <Loader2 size={48} className="animate-spin text-blue-400 mx-auto mb-4" />
-             <p className="text-slate-400 font-bold">GERANDO BIBLIOTECA...</p>
+             <p className="text-slate-400 dark:text-slate-500 font-bold">GERANDO BIBLIOTECA...</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -425,32 +425,32 @@ const Materials: React.FC = () => {
             <div 
               key={material.id} 
               onClick={() => handleOpenMaterial(material)}
-              className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 p-5 cursor-pointer hover:bg-slate-50 active:border-b-2 active:translate-y-[2px] transition-all group flex flex-col h-full shadow-sm hover:shadow-md"
+              className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 border-b-4 p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 active:border-b-2 active:translate-y-[2px] transition-all group flex flex-col h-full shadow-sm hover:shadow-md"
             >
               <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-slate-100 rounded-xl">
+                <div className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl">
                   {getIcon(material.type)}
                 </div>
                 <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wide ${
-                   material.type === 'PDF' ? 'bg-red-100 text-red-500' : 'bg-blue-100 text-blue-500'
+                   material.type === 'PDF' ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400'
                 }`}>
                   {material.type}
                 </span>
               </div>
               
-              <h3 className="font-extrabold text-lg text-slate-700 mb-2 leading-tight">
+              <h3 className="font-extrabold text-lg text-slate-700 dark:text-slate-100 mb-2 leading-tight">
                 {material.title}
               </h3>
 
               {material.summary && (
-                <p className="text-sm text-slate-400 font-medium mb-4 line-clamp-3 flex-grow">
+                <p className="text-sm text-slate-400 dark:text-slate-500 font-medium mb-4 line-clamp-3 flex-grow">
                     {material.summary}
                 </p>
               )}
               
-              <div className="flex items-center justify-between mt-auto pt-4 border-t-2 border-slate-100">
-                <span className="text-xs font-bold text-slate-400 uppercase">{material.category}</span>
-                <span className="text-xs font-bold text-slate-400">{material.duration || '5 pág'}</span>
+              <div className="flex items-center justify-between mt-auto pt-4 border-t-2 border-slate-100 dark:border-slate-700">
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{material.category}</span>
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">{material.duration || '5 pág'}</span>
               </div>
             </div>
           ))}
@@ -460,17 +460,17 @@ const Materials: React.FC = () => {
       {/* Modal - Document Viewer */}
       {selectedMaterial && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:bg-white print:static print:p-0 print-content">
-          <div className="bg-white rounded-none md:rounded-3xl w-full max-w-4xl h-full md:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 md:border-b-8 md:border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none">
+          <div className="bg-white dark:bg-slate-800 rounded-none md:rounded-3xl w-full max-w-4xl h-full md:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 md:border-b-8 md:border-slate-300 dark:md:border-slate-900 print:border-none print:shadow-none print:max-w-none print:max-h-none">
             
             {/* Header (Hidden on Print) */}
-            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 bg-white no-print">
+            <div className="flex items-start justify-between p-6 border-b-2 border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 no-print">
               <div className="pr-8">
-                <h2 className="text-2xl font-black text-slate-700 leading-tight">{selectedMaterial.title}</h2>
+                <h2 className="text-2xl font-black text-slate-700 dark:text-slate-100 leading-tight">{selectedMaterial.title}</h2>
                 <div className="flex gap-2 mt-2">
-                     <span className="text-xs font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-lg uppercase tracking-wide">
+                     <span className="text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-3 py-1 rounded-lg uppercase tracking-wide">
                         {selectedMaterial.type}
                      </span>
-                     <span className="text-xs font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-lg uppercase tracking-wide">
+                     <span className="text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-3 py-1 rounded-lg uppercase tracking-wide">
                         {selectedMaterial.category}
                      </span>
                 </div>
@@ -481,7 +481,7 @@ const Materials: React.FC = () => {
                       <button 
                           onClick={handleDownloadPDF}
                           disabled={downloadingPDF}
-                          className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors flex items-center gap-2"
+                          className="p-2 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors flex items-center gap-2"
                           title="Baixar PDF Direto"
                       >
                           {downloadingPDF ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} strokeWidth={2.5} />}
@@ -489,7 +489,7 @@ const Materials: React.FC = () => {
                       </button>
                       <button 
                           onClick={handlePrintPDF}
-                          className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors hidden md:block"
+                          className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors hidden md:block"
                           title="Salvar como PDF / Imprimir"
                       >
                           <Printer size={24} strokeWidth={2.5} />
@@ -498,7 +498,7 @@ const Materials: React.FC = () => {
                  )}
                  <button 
                     onClick={handleCloseModal}
-                    className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-colors"
+                    className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 rounded-xl transition-colors"
                  >
                     <X size={28} strokeWidth={3} />
                  </button>
@@ -506,9 +506,9 @@ const Materials: React.FC = () => {
             </div>
 
             {/* Content Area */}
-            <div id="material-content-view" className="flex-grow overflow-y-auto p-4 md:p-12 bg-slate-50 print:bg-white print:p-0 print:overflow-visible">
+            <div id="material-content-view" className="flex-grow overflow-y-auto p-4 md:p-12 bg-slate-50 dark:bg-slate-900 print:bg-white print:p-0 print:overflow-visible">
               {selectedMaterial.content ? (
-                <div className="prose prose-slate prose-lg max-w-none bg-white p-8 md:p-12 rounded-2xl border-2 border-slate-200 shadow-sm print:border-none print:shadow-none print:p-0">
+                <div className="prose dark:prose-invert prose-slate prose-lg max-w-none bg-white dark:bg-slate-800 p-8 md:p-12 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-sm print:border-none print:shadow-none print:p-0">
                    {/* Cabeçalho visível apenas no print para dar contexto */}
                    <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
                         <h1 className="text-3xl font-black">{selectedMaterial.title}</h1>
@@ -518,21 +518,21 @@ const Materials: React.FC = () => {
                     remarkPlugins={[remarkGfm]}
                     components={{
                       table: ({node, ...props}) => (
-                        <div className="overflow-x-auto my-8 border-2 border-slate-100 rounded-xl">
-                          <table className="min-w-full divide-y divide-slate-200" {...props} />
+                        <div className="overflow-x-auto my-8 border-2 border-slate-100 dark:border-slate-700 rounded-xl">
+                          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700" {...props} />
                         </div>
                       ),
                       th: ({node, ...props}) => (
-                        <th className="px-4 py-3 bg-slate-50 text-left text-xs font-black text-slate-500 uppercase tracking-wider border-b-2 border-slate-200" {...props} />
+                        <th className="px-4 py-3 bg-slate-50 dark:bg-slate-900 text-left text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b-2 border-slate-200 dark:border-slate-700" {...props} />
                       ),
                       td: ({node, ...props}) => (
-                        <td className="px-4 py-3 text-sm text-slate-600 border-b border-slate-100" {...props} />
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 border-b border-slate-100 dark:border-slate-700" {...props} />
                       ),
-                      h1: ({node, ...props}) => <h1 className="text-3xl font-black text-slate-800 mb-6 pb-2 border-b-4 border-blue-500 inline-block" {...props} />,
-                      h2: ({node, ...props}) => <h2 className="text-2xl font-black text-slate-700 mt-10 mb-4 flex items-center gap-2" {...props} />,
-                      h3: ({node, ...props}) => <h3 className="text-xl font-bold text-slate-600 mt-6 mb-3" {...props} />,
+                      h1: ({node, ...props}) => <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100 mb-6 pb-2 border-b-4 border-blue-500 inline-block" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-2xl font-black text-slate-700 dark:text-slate-200 mt-10 mb-4 flex items-center gap-2" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-xl font-bold text-slate-600 dark:text-slate-300 mt-6 mb-3" {...props} />,
                       blockquote: ({node, ...props}) => (
-                        <blockquote className="border-l-8 border-blue-500 bg-blue-50 p-6 my-8 rounded-r-2xl italic text-blue-900 font-medium" {...props} />
+                        <blockquote className="border-l-8 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 my-8 rounded-r-2xl italic text-blue-900 dark:text-blue-200 font-medium" {...props} />
                       ),
                     }}
                    >
@@ -541,11 +541,11 @@ const Materials: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center no-print">
-                   <div className="mb-6 text-slate-300">
+                   <div className="mb-6 text-slate-300 dark:text-slate-700">
                       <Sparkles size={64} />
                    </div>
-                   <h3 className="text-2xl font-black text-slate-700 mb-2">Apostila ainda não criada</h3>
-                   <p className="text-slate-400 font-bold mb-8 max-w-md">
+                   <h3 className="text-2xl font-black text-slate-700 dark:text-slate-100 mb-2">Apostila ainda não criada</h3>
+                   <p className="text-slate-400 dark:text-slate-500 font-bold mb-8 max-w-md">
                      O BizuBot vai escrever uma apostila completa em PDF sobre este tema agora.
                    </p>
 

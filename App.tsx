@@ -9,6 +9,7 @@ import Schedule from './pages/Schedule';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import { supabase } from './services/supabaseClient';
+import { ThemeProvider } from './services/ThemeContext';
 
 function App() {
   const [session, setSession] = useState<any>(null);
@@ -60,52 +61,65 @@ function App() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Carregando...</div>;
+    return (
+      <ThemeProvider>
+        <div className="min-h-screen bg-white dark:bg-slate-900 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold">
+          Carregando...
+        </div>
+      </ThemeProvider>
+    );
   }
 
   if (!session) {
     return (
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </Router>
+      <ThemeProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Router>
+      </ThemeProvider>
     );
   }
 
   if (!hasSubscription) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white px-4 text-center">
-        <h1 className="text-3xl font-bold mb-4">Assinatura Necessária</h1>
-        <p className="text-gray-400 mb-8 max-w-md">
-          Sua conta não possui uma assinatura ativa ou o e-mail não coincide com a compra na Hubla.
-          Verifique seu status na Hubla ou entre em contato com o suporte.
-        </p>
-        <button 
-          onClick={() => supabase.auth.signOut()}
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md transition-colors"
-        >
-          Sair da conta
-        </button>
-      </div>
+      <ThemeProvider>
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center px-4 text-center">
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border-2 border-b-4 border-slate-200 dark:border-slate-700 max-w-md w-full">
+            <h1 className="text-3xl font-black mb-4 text-slate-800 dark:text-white uppercase tracking-tight">Assinatura Necessária</h1>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 font-medium">
+              Sua conta não possui uma assinatura ativa ou o e-mail não coincide com a compra na Hubla.
+              Verifique seu status na Hubla ou entre em contato com o suporte.
+            </p>
+            <button 
+              onClick={() => supabase.auth.signOut()}
+              className="w-full bg-red-500 hover:bg-red-600 text-white px-6 py-4 rounded-2xl border-b-4 border-red-700 font-bold transition-all active:border-b-0 active:translate-y-[2px]"
+            >
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </ThemeProvider>
     );
   }
 
   return (
-    <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/quiz" element={<Quiz />} />
-          <Route path="/materials" element={<Materials />} />
-          <Route path="/mentor" element={<Mentor />} />
-          <Route path="/schedule" element={<Schedule />} />
-          {isAdmin && <Route path="/admin" element={<Admin />} />}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/quiz" element={<Quiz />} />
+            <Route path="/materials" element={<Materials />} />
+            <Route path="/mentor" element={<Mentor />} />
+            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/admin" element={isAdmin ? <Admin /> : <Navigate to="/" replace />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </ThemeProvider>
   );
 }
 

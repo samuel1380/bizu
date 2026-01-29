@@ -197,27 +197,27 @@ export default function Admin() {
   );
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-500 font-bold">Carregando Dashboard...</p>
+        <p className="text-slate-500 dark:text-slate-400 font-bold">Carregando Dashboard...</p>
       </div>
     </div>
   );
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12 px-4 pt-4 bg-slate-50 min-h-screen">
+    <div className="space-y-8 max-w-6xl mx-auto pb-12 px-4 pt-4 bg-slate-50 dark:bg-slate-900 min-h-screen">
       
       {/* Header com Visual do App */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-            <Link to="/" className="flex items-center gap-2 text-blue-600 font-black mb-2 hover:underline">
+            <Link to="/" className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black mb-2 hover:underline">
               <ArrowLeft size={18} /> VOLTAR AO APP
             </Link>
-            <h1 className="text-3xl font-black text-slate-700 tracking-tight">
+            <h1 className="text-3xl font-black text-slate-700 dark:text-slate-100 tracking-tight">
                 Dashboard de Controle ⚙️
             </h1>
-            <p className="text-slate-400 font-bold">Gerencie vendas e alunos do Bizu</p>
+            <p className="text-slate-400 dark:text-slate-500 font-bold">Gerencie vendas e alunos do Bizu</p>
         </div>
         
         <div className="flex gap-3">
@@ -228,16 +228,16 @@ export default function Admin() {
       </div>
 
       {/* Tabs de Navegação */}
-      <div className="flex gap-2 p-1 bg-slate-200 rounded-2xl w-fit">
+      <div className="flex gap-2 p-1 bg-slate-200 dark:bg-slate-800 rounded-2xl w-fit">
         <button 
           onClick={() => setActiveTab('sales')}
-          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'sales' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'sales' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
         >
           VENDAS & EVENTOS
         </button>
         <button 
           onClick={() => setActiveTab('users')}
-          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'users' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
         >
           LISTA DE ALUNOS ({profiles.length})
         </button>
@@ -245,49 +245,49 @@ export default function Admin() {
 
       {/* Grid de Faturamento e Vendas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Vendas Hoje" value={stats.salesToday} icon={<Zap />} color="bg-yellow-100 text-yellow-600" borderColor="border-yellow-200" borderBottomColor="border-b-yellow-400" />
-        <StatCard title="Vendas Mês" value={stats.salesMonth} icon={<TrendingUp />} color="bg-green-100 text-green-600" borderColor="border-green-200" borderBottomColor="border-b-green-400" />
-        <StatCard title="Abandonos" value={stats.abandonedCarts} icon={<ShoppingCart />} color="bg-orange-100 text-orange-600" borderColor="border-orange-200" borderBottomColor="border-b-orange-400" />
-        <StatCard title="Faturamento Total" value={`R$ ${stats.revenueTotal.toLocaleString()}`} icon={<DollarSign />} color="bg-blue-100 text-blue-600" borderColor="border-blue-200" borderBottomColor="border-b-blue-400" />
+        <StatCard title="Vendas Hoje" value={stats.salesToday} icon={<Zap />} color="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" borderColor="border-yellow-200 dark:border-yellow-800/50" borderBottomColor="border-b-yellow-400 dark:border-b-yellow-600" />
+        <StatCard title="Vendas Mês" value={stats.salesMonth} icon={<TrendingUp />} color="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" borderColor="border-green-200 dark:border-green-800/50" borderBottomColor="border-b-green-400 dark:border-b-green-600" />
+        <StatCard title="Abandonos" value={stats.abandonedCarts} icon={<ShoppingCart />} color="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" borderColor="border-orange-200 dark:border-orange-800/50" borderBottomColor="border-b-orange-400 dark:border-b-orange-600" />
+        <StatCard title="Faturamento Total" value={`R$ ${stats.revenueTotal.toLocaleString()}`} icon={<DollarSign />} color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" borderColor="border-blue-200 dark:border-blue-800/50" borderBottomColor="border-b-blue-400 dark:border-b-blue-600" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 flex flex-col justify-center">
+        <div className="md:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col justify-center">
             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight">Resumo de Conversão</h3>
-                <div className="bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 uppercase">Tempo Real</div>
+                <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Resumo de Conversão</h3>
+                <div className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Tempo Real</div>
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                    <p className="text-3xl font-black text-slate-700">{stats.totalLeads}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase">Total Leads</p>
+                    <p className="text-3xl font-black text-slate-700 dark:text-slate-100">{stats.totalLeads}</p>
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Total Leads</p>
                 </div>
                 <div>
-                    <p className="text-3xl font-black text-blue-600">{stats.totalSales}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase">Vendas</p>
+                    <p className="text-3xl font-black text-blue-600 dark:text-blue-400">{stats.totalSales}</p>
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Vendas</p>
                 </div>
                 <div>
-                    <p className="text-3xl font-black text-orange-500">{stats.abandonedCarts}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase">Abandonos</p>
+                    <p className="text-3xl font-black text-orange-500 dark:text-orange-400">{stats.abandonedCarts}</p>
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Abandonos</p>
                 </div>
             </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 flex flex-col justify-center text-center">
-            <div className="mx-auto mb-4 bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center border-2 border-purple-200">
-                <Users className="text-purple-600" size={32} />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col justify-center text-center">
+            <div className="mx-auto mb-4 bg-purple-100 dark:bg-purple-900/30 w-16 h-16 rounded-full flex items-center justify-center border-2 border-purple-200 dark:border-purple-800/50">
+                <Users className="text-purple-600 dark:text-purple-400" size={32} />
             </div>
-            <h3 className="text-4xl font-black text-slate-700">{stats.activeSubscriptions}</h3>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Alunos Ativos</p>
+            <h3 className="text-4xl font-black text-slate-700 dark:text-slate-100">{stats.activeSubscriptions}</h3>
+            <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-sm">Alunos Ativos</p>
         </div>
       </div>
 
       {/* Barra de Busca e Filtros */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={20} />
         <input 
           type="text" 
           placeholder={activeTab === 'sales' ? "Buscar por e-mail, evento ou status..." : "Buscar aluno por e-mail..."}
-          className="w-full pl-12 pr-4 py-4 bg-white border-2 border-b-4 border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-600 shadow-sm"
+          className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-800 border-2 border-b-4 border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-600 dark:text-slate-300 shadow-sm"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -295,27 +295,27 @@ export default function Admin() {
 
       {activeTab === 'sales' ? (
         <div className="space-y-4">
-          <h3 className="text-xl font-black text-slate-700 flex items-center gap-2 px-2">
+          <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 flex items-center gap-2 px-2">
               <Clock className="text-blue-500" />
               Histórico Detalhado
           </h3>
 
           <div className="space-y-3">
             {filteredEvents.map((event) => (
-              <div key={event.id} className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 overflow-hidden transition-all group">
+              <div key={event.id} className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 border-b-4 overflow-hidden transition-all group">
                 <div 
-                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                   onClick={() => setSelectedEvent(selectedEvent === event.id ? null : event.id)}
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${getEventBadge(event.event_type).includes('green') ? 'bg-green-50 border-green-100' : 'bg-slate-50 border-slate-100'}`}>
-                      <Mail className={getEventBadge(event.event_type).includes('green') ? 'text-green-600' : 'text-slate-400'} size={24} />
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${getEventBadge(event.event_type).includes('green') ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/30' : 'bg-slate-50 dark:bg-slate-700 border-slate-100 dark:border-slate-600'}`}>
+                      <Mail className={getEventBadge(event.event_type).includes('green') ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} size={24} />
                     </div>
                     <div>
-                      <h4 className="font-black text-slate-700 leading-tight">
+                      <h4 className="font-black text-slate-700 dark:text-slate-100 leading-tight">
                         {event.email}
                       </h4>
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mt-1">
                         <Calendar size={12} />
                         {new Date(event.created_at).toLocaleString('pt-BR')}
                         <span className="mx-1">•</span>
@@ -328,7 +328,7 @@ export default function Admin() {
                     <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-2 ${getEventBadge(event.event_type)}`}>
                       {formatEventType(event.event_type)}
                     </span>
-                    <div className="text-slate-400">
+                    <div className="text-slate-400 dark:text-slate-500">
                       {selectedEvent === event.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                     </div>
                   </div>
@@ -336,7 +336,7 @@ export default function Admin() {
 
                 {/* Detalhes do Webhook (JSON) */}
                 {selectedEvent === event.id && (
-                  <div className="p-4 bg-slate-900 text-blue-300 font-mono text-xs overflow-x-auto border-t-2 border-slate-200">
+                  <div className="p-4 bg-slate-900 text-blue-300 font-mono text-xs overflow-x-auto border-t-2 border-slate-200 dark:border-slate-700">
                     <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
                       <span className="text-slate-500 font-bold uppercase tracking-widest">DADOS BRUTOS DO WEBHOOK</span>
                       <button 
@@ -355,15 +355,15 @@ export default function Admin() {
             ))}
 
             {filteredEvents.length === 0 && (
-              <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
-                <p className="text-slate-400 font-bold italic">Nenhum evento encontrado para esta busca.</p>
+              <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center">
+                <p className="text-slate-400 dark:text-slate-500 font-bold italic">Nenhum evento encontrado para esta busca.</p>
               </div>
             )}
           </div>
         </div>
       ) : (
         <div className="space-y-4">
-          <h3 className="text-xl font-black text-slate-700 flex items-center gap-2 px-2">
+          <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 flex items-center gap-2 px-2">
               <Users className="text-blue-500" />
               Lista Geral de Alunos
           </h3>
@@ -372,18 +372,18 @@ export default function Admin() {
             {profiles
               .filter(p => p.email.toLowerCase().includes(searchTerm.toLowerCase()))
               .map((profile) => (
-              <div key={profile.email} className="bg-white p-5 rounded-2xl border-2 border-slate-200 border-b-4 flex items-center justify-between group hover:border-blue-200 transition-all">
+              <div key={profile.email} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 border-b-4 flex items-center justify-between group hover:border-blue-200 dark:hover:border-blue-800 transition-all">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${profile.subscription_active ? 'bg-green-100 border-green-200' : 'bg-slate-100 border-slate-200'}`}>
-                    <Users size={20} className={profile.subscription_active ? 'text-green-600' : 'text-slate-400'} />
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${profile.subscription_active ? 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800/30' : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
+                    <Users size={20} className={profile.subscription_active ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} />
                   </div>
                   <div>
-                    <h4 className="font-black text-slate-700 leading-tight">{profile.email}</h4>
+                    <h4 className="font-black text-slate-700 dark:text-slate-100 leading-tight">{profile.email}</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
                         {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
                       </span>
-                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1">
                         <Clock size={10} />
                         {new Date(profile.updated_at).toLocaleDateString('pt-BR')}
                       </span>
@@ -392,8 +392,8 @@ export default function Admin() {
                 </div>
                 
                 <div className="text-right">
-                   <p className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter mb-1">Último Evento</p>
-                   <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                   <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-tighter mb-1">Último Evento</p>
+                   <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">
                      {profile.last_webhook_event || 'N/A'}
                    </span>
                 </div>
@@ -401,8 +401,8 @@ export default function Admin() {
             ))}
 
             {profiles.length === 0 && (
-              <div className="md:col-span-2 bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
-                <p className="text-slate-400 font-bold italic">Nenhum aluno cadastrado no sistema ainda.</p>
+              <div className="md:col-span-2 bg-white dark:bg-slate-800 p-12 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center">
+                <p className="text-slate-400 dark:text-slate-500 font-bold italic">Nenhum aluno cadastrado no sistema ainda.</p>
               </div>
             )}
           </div>
@@ -414,12 +414,12 @@ export default function Admin() {
 
 function StatCard({ title, value, icon, color, borderColor, borderBottomColor }: any) {
   return (
-    <div className={`bg-white p-5 rounded-3xl border-2 ${borderColor} ${borderBottomColor} transition-all hover:scale-[1.02]`}>
+    <div className={`bg-white dark:bg-slate-800 p-5 rounded-3xl border-2 ${borderColor} ${borderBottomColor} transition-all hover:scale-[1.02]`}>
         <div className={`mb-3 ${color} w-10 h-10 rounded-xl flex items-center justify-center border-2 ${borderColor}`}>
             {React.cloneElement(icon, { size: 20, strokeWidth: 2.5 })}
         </div>
-        <h3 className="text-xl md:text-2xl font-black text-slate-700 leading-tight">{value}</h3>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{title}</p>
+        <h3 className="text-xl md:text-2xl font-black text-slate-700 dark:text-slate-100 leading-tight">{value}</h3>
+        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">{title}</p>
     </div>
   );
 }

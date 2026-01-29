@@ -111,23 +111,23 @@ const Mentor: React.FC = () => {
 
   if (initializing) {
       return (
-          <div className="h-[500px] flex flex-col items-center justify-center bg-white rounded-3xl border-2 border-slate-200">
+          <div className="h-[500px] flex flex-col items-center justify-center bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-200 dark:border-slate-700">
               <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-              <p className="text-slate-400 font-bold tracking-wide">ACORDANDO O ROBÔ...</p>
+              <p className="text-slate-400 dark:text-slate-500 font-bold tracking-wide">ACORDANDO O ROBÔ...</p>
           </div>
       );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-50 rounded-3xl border-2 border-slate-200 overflow-hidden shadow-sm">
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-50 dark:bg-slate-900 rounded-3xl border-2 border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
       {/* Header */}
-      <div className="px-6 py-4 bg-white border-b-2 border-slate-200 flex items-center justify-between z-10">
+      <div className="px-6 py-4 bg-white dark:bg-slate-800 border-b-2 border-slate-200 dark:border-slate-700 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
            <div className="bg-blue-600 p-2.5 rounded-2xl border-b-4 border-blue-800 text-white transform hover:scale-105 transition-transform">
                <Bot size={28} strokeWidth={2.5} />
            </div>
            <div>
-               <h2 className="font-black text-slate-700 text-lg leading-none">BizuBot</h2>
+               <h2 className="font-black text-slate-700 dark:text-slate-100 text-lg leading-none">BizuBot</h2>
                <span className="text-xs font-bold text-green-500 uppercase tracking-wider flex items-center gap-1">
                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online
                </span>
@@ -135,7 +135,7 @@ const Mentor: React.FC = () => {
         </div>
         <button 
             onClick={handleClearChat} 
-            className="p-2 text-slate-300 hover:text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+            className="p-2 text-slate-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
             title="Limpar conversa"
         >
             <Trash2 size={24} strokeWidth={2.5} />
@@ -143,7 +143,7 @@ const Mentor: React.FC = () => {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-grow overflow-y-auto p-4 md:p-6 space-y-6">
+      <div className="flex-grow overflow-y-auto p-4 md:p-6 space-y-6 bg-slate-50 dark:bg-slate-900">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -155,7 +155,7 @@ const Mentor: React.FC = () => {
               <div className={`flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center border-2 border-b-4 ${
                 msg.role === 'user' 
                     ? 'bg-blue-600 text-white border-blue-800' 
-                    : 'bg-white text-blue-500 border-slate-200'
+                    : 'bg-white dark:bg-slate-700 text-blue-500 dark:text-blue-400 border-slate-200 dark:border-slate-600'
               }`}>
                 {msg.role === 'user' ? <User size={20} strokeWidth={3} /> : <Bot size={24} strokeWidth={3} />}
               </div>
@@ -164,15 +164,15 @@ const Mentor: React.FC = () => {
               <div className={`p-4 md:p-5 rounded-3xl border-2 border-b-4 text-sm md:text-base font-bold leading-relaxed relative group ${
                 msg.role === 'user' 
                   ? 'bg-blue-500 border-blue-700 text-white rounded-tr-none' 
-                  : 'bg-white border-slate-200 text-slate-600 rounded-tl-none'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-tl-none'
               }`}>
                  <ReactMarkdown 
                     components={{
                         p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
                         ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
                         ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
-                        strong: ({node, ...props}) => <strong className={msg.role === 'user' ? 'text-blue-100' : 'text-slate-800'} {...props} />,
-                        code: ({node, ...props}) => <code className={`px-1 py-0.5 rounded text-xs ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-800'} break-all`} {...props} />
+                        strong: ({node, ...props}) => <strong className={msg.role === 'user' ? 'text-blue-100' : 'text-slate-800 dark:text-slate-100'} {...props} />,
+                        code: ({node, ...props}) => <code className={`px-1 py-0.5 rounded text-xs ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200'} break-all`} {...props} />
                     }}
                  >
                     {msg.text || "..."}
@@ -185,13 +185,13 @@ const Mentor: React.FC = () => {
         {loading && (
           <div className="flex justify-start w-full animate-pulse">
             <div className="flex items-center gap-3">
-               <div className="w-12 h-12 rounded-2xl bg-white text-blue-400 border-2 border-b-4 border-slate-200 flex items-center justify-center">
+               <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-700 text-blue-400 dark:text-blue-300 border-2 border-b-4 border-slate-200 dark:border-slate-600 flex items-center justify-center">
                   <Bot size={24} strokeWidth={2.5} />
                </div>
-               <div className="bg-white px-6 py-4 rounded-3xl rounded-tl-none border-2 border-b-4 border-slate-200 flex gap-2 items-center">
-                 <span className="w-2.5 h-2.5 bg-slate-300 rounded-full animate-bounce"></span>
-                 <span className="w-2.5 h-2.5 bg-slate-300 rounded-full animate-bounce delay-100"></span>
-                 <span className="w-2.5 h-2.5 bg-slate-300 rounded-full animate-bounce delay-200"></span>
+               <div className="bg-white dark:bg-slate-800 px-6 py-4 rounded-3xl rounded-tl-none border-2 border-b-4 border-slate-200 dark:border-slate-700 flex gap-2 items-center">
+                 <span className="w-2.5 h-2.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce"></span>
+                 <span className="w-2.5 h-2.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce delay-100"></span>
+                 <span className="w-2.5 h-2.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce delay-200"></span>
                </div>
             </div>
           </div>
@@ -200,7 +200,7 @@ const Mentor: React.FC = () => {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 md:p-6 bg-white border-t-2 border-slate-200">
+      <div className="p-4 md:p-6 bg-white dark:bg-slate-800 border-t-2 border-slate-200 dark:border-slate-700">
         <form onSubmit={handleSend} className="flex gap-3 max-w-4xl mx-auto relative">
            <div className="relative flex-grow">
                 <input
@@ -208,9 +208,9 @@ const Mentor: React.FC = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Digite sua mensagem..."
-                    className="w-full pl-5 pr-12 py-4 bg-slate-100 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-slate-700 placeholder:text-slate-400 transition-all"
+                    className="w-full pl-5 pr-12 py-4 bg-slate-100 dark:bg-slate-700 rounded-2xl border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-blue-400 outline-none font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-all"
                 />
-                <div className="absolute right-4 inset-y-0 flex items-center text-slate-300 pointer-events-none">
+                <div className="absolute right-4 inset-y-0 flex items-center text-slate-300 dark:text-slate-500 pointer-events-none">
                     <MessageSquare size={20} />
                 </div>
            </div>

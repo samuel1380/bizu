@@ -70,19 +70,19 @@ const Schedule: React.FC = () => {
     return (
       <div className="max-w-2xl mx-auto space-y-8">
         <div className="text-center space-y-4">
-          <div className="bg-yellow-100 p-4 rounded-full inline-block border-2 border-yellow-200">
-             <Calendar size={48} className="text-yellow-600" strokeWidth={2} />
+          <div className="bg-yellow-100 dark:bg-yellow-900/30 p-4 rounded-full inline-block border-2 border-yellow-200 dark:border-yellow-800/30">
+             <Calendar size={48} className="text-yellow-600 dark:text-yellow-400" strokeWidth={2} />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-700">Organize sua Aprovação</h1>
-          <p className="text-slate-500 font-bold text-lg">
+          <h1 className="text-3xl font-extrabold text-slate-700 dark:text-slate-100">Organize sua Aprovação</h1>
+          <p className="text-slate-500 dark:text-slate-400 font-bold text-lg">
             Diga ao BizuBot seu objetivo e ele criará o plano perfeito.
           </p>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 shadow-sm">
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border-2 border-slate-200 dark:border-slate-700 shadow-sm">
           <form onSubmit={handleCreate} className="space-y-6">
             <div>
-              <label className="block text-sm font-bold text-slate-400 uppercase tracking-wide mb-2 ml-1">
+              <label className="block text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2 ml-1">
                 Qual concurso você quer passar?
               </label>
               <input 
@@ -90,18 +90,18 @@ const Schedule: React.FC = () => {
                 value={exam}
                 onChange={(e) => setExam(e.target.value)}
                 placeholder="Ex: Polícia Federal, INSS, Banco do Brasil..."
-                className="w-full px-5 py-4 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50 outline-none font-bold text-slate-700 transition-all"
+                className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-700 rounded-2xl border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-50/20 outline-none font-bold text-slate-700 dark:text-slate-200 transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-400 uppercase tracking-wide mb-2 ml-1">
+              <label className="block text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2 ml-1">
                 Horas por dia disponíveis
               </label>
               <div className="relative">
                 <div className="absolute left-5 inset-y-0 flex items-center pointer-events-none">
-                  <Clock className="text-slate-400" size={20} />
+                  <Clock className="text-slate-400 dark:text-slate-500" size={20} />
                 </div>
                 <input 
                   type="number" 
@@ -109,27 +109,27 @@ const Schedule: React.FC = () => {
                   max={12}
                   value={hours}
                   onChange={(e) => setHours(Number(e.target.value))}
-                  className="w-full pl-12 pr-5 py-4 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50 outline-none font-bold text-slate-700 transition-all"
+                  className="w-full pl-12 pr-5 py-4 bg-slate-50 dark:bg-slate-700 rounded-2xl border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-50/20 outline-none font-bold text-slate-700 dark:text-slate-200 transition-all"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-400 uppercase tracking-wide mb-2 ml-1">
+              <label className="block text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2 ml-1">
                 Quais matérias priorizar?
               </label>
               <div className="relative">
-                <BookMarked className="absolute left-5 top-4 text-slate-400" size={20} />
+                <BookMarked className="absolute left-5 top-4 text-slate-400 dark:text-slate-500" size={20} />
                 <textarea 
                   value={subjects}
                   onChange={(e) => setSubjects(e.target.value)}
                   placeholder="Ex: Português (prioridade), Raciocínio Lógico..."
-                  className="w-full pl-12 pr-5 py-4 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50 outline-none font-bold text-slate-700 transition-all min-h-[120px] resize-none"
+                  className="w-full pl-12 pr-5 py-4 bg-slate-50 dark:bg-slate-700 rounded-2xl border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-50/20 outline-none font-bold text-slate-700 dark:text-slate-200 transition-all min-h-[120px] resize-none"
                   required
                 />
               </div>
-              <p className="mt-2 text-xs text-slate-400 font-bold leading-relaxed">
+              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500 font-bold leading-relaxed">
                 Pode colocar só 1 matéria. O BizuBot prioriza ela e completa o resto do edital.
               </p>
             </div>
@@ -155,7 +155,7 @@ const Schedule: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="bg-blue-600 rounded-3xl p-8 border-b-8 border-blue-800 text-white relative overflow-hidden">
+      <div className="bg-blue-600 dark:bg-blue-700 rounded-3xl p-8 border-b-8 border-blue-800 dark:border-blue-900 text-white relative overflow-hidden">
         <div className="relative z-10">
             <div className="flex justify-between items-start">
                 <div>
@@ -166,7 +166,7 @@ const Schedule: React.FC = () => {
                 </div>
                 <button 
                     onClick={handleDelete}
-                    className="p-3 bg-blue-700 hover:bg-red-500 rounded-xl transition-colors text-white"
+                    className="p-3 bg-blue-700 dark:bg-blue-800 hover:bg-red-500 dark:hover:bg-red-500 rounded-xl transition-colors text-white"
                     title="Apagar Rotina"
                 >
                     <Trash2 size={24} />
@@ -181,31 +181,31 @@ const Schedule: React.FC = () => {
       {/* Week Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {routine.weekSchedule.map((day, idx) => (
-            <div key={idx} className="bg-white rounded-3xl border-2 border-slate-200 border-b-4 flex flex-col overflow-hidden hover:translate-y-[-2px] transition-transform">
+            <div key={idx} className="bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-4 flex flex-col overflow-hidden hover:translate-y-[-2px] transition-transform">
                 {/* Day Header */}
                 <div className={`p-4 font-black text-center uppercase tracking-wider text-white ${
-                    idx === 0 ? 'bg-yellow-400' : // Segunda (Start)
-                    idx === 6 ? 'bg-red-400' :    // Domingo (Rest/Review)
-                    'bg-blue-400'
+                    idx === 0 ? 'bg-yellow-400 dark:bg-yellow-500' : // Segunda (Start)
+                    idx === 6 ? 'bg-red-400 dark:bg-red-500' :    // Domingo (Rest/Review)
+                    'bg-blue-400 dark:bg-blue-500'
                 }`}>
                     {day.day}
                 </div>
                 
                 <div className="p-5 flex-grow space-y-4">
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Foco Principal</span>
-                        <p className="font-bold text-slate-700 leading-tight">{day.focus}</p>
+                    <div className="bg-slate-50 dark:bg-slate-700 p-3 rounded-xl border border-slate-100 dark:border-slate-600 mb-4">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block mb-1">Foco Principal</span>
+                        <p className="font-bold text-slate-700 dark:text-slate-100 leading-tight">{day.focus}</p>
                     </div>
 
                     <div className="space-y-3">
                         {day.tasks.map((task, tIdx) => (
                             <div key={tIdx} className="flex items-start gap-3 group cursor-pointer">
-                                <div className="mt-1 text-slate-300 group-hover:text-green-500 transition-colors">
+                                <div className="mt-1 text-slate-300 dark:text-slate-600 group-hover:text-green-500 transition-colors">
                                     <CheckCircle2 size={20} />
                                 </div>
                                 <div>
-                                    <p className="font-bold text-slate-700 text-sm">{task.subject}</p>
-                                    <p className="text-xs text-slate-500 font-medium">{task.activity} • {task.duration}</p>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{task.subject}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{task.activity} • {task.duration}</p>
                                 </div>
                             </div>
                         ))}

@@ -132,38 +132,38 @@ const Home: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto pb-12">
+    <div className="space-y-8 max-w-4xl mx-auto pb-12 transition-colors duration-300">
       
       {/* Header com Saudação e Stats Compactos */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-            <h1 className="text-2xl font-black text-slate-700 tracking-tight">
+            <h1 className="text-2xl font-black text-slate-700 dark:text-slate-200 tracking-tight">
                 Olá, Concurseiro! 👋
             </h1>
-            <p className="text-slate-400 font-bold">Vamos bater a meta de hoje?</p>
+            <p className="text-slate-400 dark:text-slate-500 font-bold">Vamos bater a meta de hoje?</p>
         </div>
         
         <div className="flex flex-wrap gap-3">
             {isAdmin && (
-              <Link to="/admin" className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl border-b-4 border-slate-950 hover:bg-slate-900 transition-all font-black text-xs">
+              <Link to="/admin" className="flex items-center gap-2 px-4 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-xl border-b-4 border-slate-950 dark:border-slate-900 hover:bg-slate-900 dark:hover:bg-slate-600 transition-all font-black text-xs">
                   <ShieldCheck size={18} className="text-blue-400" />
                   PAINEL ADMIN
               </Link>
             )}
-            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border-2 border-b-4 border-slate-200">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 rounded-xl border-2 border-b-4 border-slate-200 dark:border-slate-800">
                 <Flame className="text-orange-500 fill-current" size={20} />
-                <span className="font-black text-slate-600">{stats.currentStreak}</span>
+                <span className="font-black text-slate-600 dark:text-slate-300">{stats.currentStreak}</span>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border-2 border-b-4 border-slate-200">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 rounded-xl border-2 border-b-4 border-slate-200 dark:border-slate-800">
                 <Trophy className="text-yellow-500 fill-current" size={20} />
-                <span className="font-black text-slate-600">{stats.totalQuestions}</span>
+                <span className="font-black text-slate-600 dark:text-slate-300">{stats.totalQuestions}</span>
             </div>
         </div>
       </div>
 
       {/* Hero: Card de "Próximo Passo" (Layout Mobile Otimizado) */}
-      <div className="bg-blue-600 rounded-3xl p-1 border-b-8 border-blue-800 shadow-xl transform transition-all hover:scale-[1.01] cursor-pointer group">
-         <Link to="/quiz" className="block bg-blue-500 rounded-[20px] p-6 md:p-8 relative overflow-hidden border-2 border-blue-400/30">
+      <div className="bg-blue-600 dark:bg-blue-700 rounded-3xl p-1 border-b-8 border-blue-800 dark:border-blue-900 shadow-xl transform transition-all hover:scale-[1.01] cursor-pointer group">
+         <Link to="/quiz" className="block bg-blue-500 dark:bg-blue-600 rounded-[20px] p-6 md:p-8 relative overflow-hidden border-2 border-blue-400/30">
              {/* Conteúdo flexível: Mobile (lado a lado apertado) / Desktop (lado a lado espaçado) */}
              <div className="relative z-10 flex flex-col gap-6">
                 
@@ -200,27 +200,27 @@ const Home: React.FC = () => {
 
       {/* Grid de Ações Rápidas (Botões Quadrados Grandes) */}
       <div className="grid grid-cols-2 gap-4">
-        <Link to="/mentor" className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 hover:bg-green-50 hover:border-green-200 hover:border-b-green-400 group transition-all active:border-b-2 active:translate-y-[6px]">
-            <div className="mb-4 bg-green-100 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-green-200 group-hover:scale-110 transition-transform">
-                <MessageSquareText size={28} className="text-green-600" strokeWidth={2.5} />
+        <Link to="/mentor" className="bg-white dark:bg-slate-900 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 border-b-8 dark:border-b-slate-950 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-200 dark:hover:border-green-800 hover:border-b-green-400 group transition-all active:border-b-2 active:translate-y-[6px]">
+            <div className="mb-4 bg-green-100 dark:bg-green-900/30 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-green-200 dark:border-green-800 group-hover:scale-110 transition-transform">
+                <MessageSquareText size={28} className="text-green-600 dark:text-green-400" strokeWidth={2.5} />
             </div>
-            <h3 className="text-xl font-black text-slate-700 leading-tight mb-1">Mentor IA</h3>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Tirar Dúvidas</p>
+            <h3 className="text-xl font-black text-slate-700 dark:text-slate-200 leading-tight mb-1">Mentor IA</h3>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Tirar Dúvidas</p>
         </Link>
 
-        <Link to="/materials" className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 hover:bg-purple-50 hover:border-purple-200 hover:border-b-purple-400 group transition-all active:border-b-2 active:translate-y-[6px]">
-            <div className="mb-4 bg-purple-100 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-purple-200 group-hover:scale-110 transition-transform">
-                <BookOpen size={28} className="text-purple-600" strokeWidth={2.5} />
+        <Link to="/materials" className="bg-white dark:bg-slate-900 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-800 border-b-8 dark:border-b-slate-950 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-200 dark:hover:border-purple-800 hover:border-b-purple-400 group transition-all active:border-b-2 active:translate-y-[6px]">
+            <div className="mb-4 bg-purple-100 dark:bg-purple-900/30 w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-purple-200 dark:border-purple-800 group-hover:scale-110 transition-transform">
+                <BookOpen size={28} className="text-purple-600 dark:text-purple-400" strokeWidth={2.5} />
             </div>
-            <h3 className="text-xl font-black text-slate-700 leading-tight mb-1">Materiais</h3>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Biblioteca</p>
+            <h3 className="text-xl font-black text-slate-700 dark:text-slate-200 leading-tight mb-1">Materiais</h3>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Biblioteca</p>
         </Link>
       </div>
 
       {/* Radar de Concursos (Horizontal Scroll - App Feel) */}
       <div className="pt-4">
         <div className="flex items-center justify-between mb-4 px-2">
-            <h3 className="text-xl font-black text-slate-700 flex items-center gap-2">
+            <h3 className="text-xl font-black text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Briefcase className="text-blue-500 fill-current" />
                 Radar 2026
             </h3>
@@ -228,7 +228,7 @@ const Home: React.FC = () => {
             <button 
               onClick={handleRefreshRadar}
               disabled={refreshingRadar}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 border-2 border-blue-100 hover:bg-blue-100 active:border-blue-200 transition-all text-xs font-bold uppercase tracking-wide disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-2 border-blue-100 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-800 active:border-blue-200 transition-all text-xs font-bold uppercase tracking-wide disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {refreshingRadar ? (
                 <>
@@ -245,36 +245,36 @@ const Home: React.FC = () => {
         {/* Scroll Container com Snap */}
         <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory -mx-4 px-4 scrollbar-hide">
             {news.map((item) => (
-              <div key={item.id} className="snap-center shrink-0 w-80 bg-white p-5 rounded-3xl border-2 border-slate-200 border-b-4 hover:border-blue-300 transition-all cursor-pointer group relative">
+              <div key={item.id} className="snap-center shrink-0 w-80 bg-white dark:bg-slate-900 p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-800 border-b-4 dark:border-b-slate-950 hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group relative">
                  
                  {/* Status Badge Pills */}
                  <div className="flex justify-between items-start mb-3">
                     <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-b-2 ${getStatusColor(item.status)}`}>
                         {item.status}
                     </span>
-                    <div className="text-xs font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                    <div className="text-xs font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-100 dark:border-slate-700">
                         <Building2 size={12} /> {item.board}
                     </div>
                  </div>
 
-                 <h4 className="font-black text-lg text-slate-700 leading-tight mb-1">
+                 <h4 className="font-black text-lg text-slate-700 dark:text-slate-200 leading-tight mb-1">
                     {item.institution}
                  </h4>
-                 <p className="text-sm font-bold text-slate-400 mb-4">{item.title}</p>
+                 <p className="text-sm font-bold text-slate-400 dark:text-slate-500 mb-4">{item.title}</p>
                  
-                 <div className="bg-slate-50 rounded-xl p-3 space-y-2 border border-slate-100">
+                 <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 border border-slate-100 dark:border-slate-700">
                     <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 font-bold text-xs uppercase flex items-center gap-1">
+                        <span className="text-slate-400 dark:text-slate-500 font-bold text-xs uppercase flex items-center gap-1">
                             <Calendar size={14} /> Data
                         </span>
-                        <span className="font-bold text-slate-700">{item.forecast}</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">{item.forecast}</span>
                     </div>
                     
                     <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 font-bold text-xs uppercase flex items-center gap-1">
+                        <span className="text-slate-400 dark:text-slate-500 font-bold text-xs uppercase flex items-center gap-1">
                             <DollarSign size={14} /> Salário
                         </span>
-                        <span className="font-black text-green-600 text-xs">
+                        <span className="font-black text-green-600 dark:text-green-400 text-xs">
                             {item.salary}
                         </span>
                     </div>
@@ -283,11 +283,11 @@ const Home: React.FC = () => {
                  {/* Ícone sutil de Link se existir */}
                  <div className="absolute top-1/2 right-4 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all">
                      {item.url ? (
-                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="bg-blue-100 p-2 rounded-full text-blue-600 hover:bg-blue-200">
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-full text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800">
                           <ExternalLink size={20} />
                         </a>
                      ) : (
-                        <ChevronRight className="text-slate-300" />
+                        <ChevronRight className="text-slate-300 dark:text-slate-600" />
                      )}
                  </div>
               </div>
