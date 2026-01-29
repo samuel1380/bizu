@@ -3,10 +3,16 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURAÇÃO DO AMBIENTE ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.VITE_SUPABASE_ANON_KEY || ''
+);
 
 // Instrução de Sistema (System Prompt) para a IA se comportar como BizuBot
 const BIZU_SYSTEM_PROMPT = `Você é o BizuBot, a inteligência artificial oficial do Bizu App.
@@ -65,7 +71,66 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
+// --- ENDPOINTS DE WEBHOOK (HUBLA) ---
+
+/**
+ * Endpoint para receber notificações da Hubla.
+ * Configure esta URL no painel da Hubla: https://seu-app.onrender.com/webhooks/hubla
+ */
+app.post('/webhooks/hubla', async (req, res) => {
+  const event = req.body;
+
+  // Log para depuração (remova em produção se desejar)
+  console.log('Evento Hubla recebido:', JSON.stringify(event, null, 2));
+
+  try {
+    const email = event.data?.user?.email || event.user_email;
+    const status = event.event_type; // 'order_completed', 'subscription_cancelled', etc.
+
+    if (!email) {
+      return res.status(400).send('Email não encontrado no evento');
+    }
+
+    let isActive = false;
+
+    // Lógica simplificada de status da Hubla
+    // Você deve ajustar 'order_completed' e 'subscription_renewed' conforme a documentação exata da Hubla
+    if (['order_completed', 'subscription_renewed', 'approved'].includes(status)) {
+      isActive = true;
+    } else if (['subscription_cancelled', 'refunded', 'expired'].includes(status)) {
+      isActive = false;
+    } else {
+      // Se for um evento desconhecido, não alteramos nada ou logamos
+      console.log(`Evento desconhecido: ${status}`);
+      return res.status(200).send('Evento ignorado');
+    }
+
+    // Atualiza ou cria o perfil no Supabase
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ 
+        email: email.toLowerCase(),
+        subscription_active: isActive,
+        last_webhook_event: status,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'email' });
+
+    if (error) {
+      console.error('Erro ao atualizar perfil via webhook:', error);
+      return res.status(500).send('Erro interno');
+    }
+
+    console.log(`Perfil ${email} atualizado: Ativo = ${isActive}`);
+    res.status(200).send('Webhook processado com sucesso');
+
+  } catch (err) {
+    console.error('Erro no processamento do webhook:', err);
+    res.status(500).send('Erro interno');
+  }
+});
+
 // --- MIDDLEWARES ---
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, 'dist')));
@@ -115,6 +180,34 @@ function ensureArray(data) {
     if (possibleArray) return possibleArray;
   }
   return [];
+}
+
+function parseSubjectList(input) {
+  if (Array.isArray(input)) {
+    return input
+      .map(s => String(s || "").trim())
+      .filter(Boolean);
+  }
+
+  return String(input || "")
+    .split(/[,;\n]/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function countDistinctRoutineSubjects(routine) {
+  const subjects = new Set();
+  const days = Array.isArray(routine?.weekSchedule) ? routine.weekSchedule : [];
+
+  for (const day of days) {
+    const tasks = Array.isArray(day?.tasks) ? day.tasks : [];
+    for (const task of tasks) {
+      const subject = String(task?.subject || "").trim();
+      if (subject) subjects.add(subject.toLowerCase());
+    }
+  }
+
+  return subjects.size;
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -295,7 +388,11 @@ async function runWithModelFallback(ai, actionName, payload) {
             prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
             Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${payload.targetExam}".
             Disponibilidade: ${payload.hours} horas por dia.
-            Matérias: ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
+            Matérias prioritárias (dar mais tempo e mais recorrência): ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
+            
+            REGRA DE OURO: a lista acima NÃO é a lista completa do edital. Mesmo que venha só 1 matéria (ex: "Português"), você deve completar com outras matérias essenciais e típicas do concurso/cargo informado em "${payload.targetExam}".
+            Distribua a semana em ciclo, com a(s) matéria(s) prioritária(s) aparecendo(em) mais vezes, sem excluir as demais.
+            MÍNIMO: inclua pelo menos 5 matérias distintas ao longo da semana.
             
             REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
             1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos.
@@ -327,6 +424,12 @@ async function runWithModelFallback(ai, actionName, payload) {
           const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
           if (isJson) {
             const parsed = JSON.parse(extractJSON(res.text));
+            if (actionName === 'generateRoutine') {
+              const minDistinct = Math.max(5, Math.min(10, parseSubjectList(payload.subjects).length + 3));
+              if (countDistinctRoutineSubjects(parsed) < minDistinct) {
+                throw new Error("ROUTINE_LOW_DIVERSITY");
+              }
+            }
             return actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar' 
               ? ensureArray(parsed) 
               : parsed;
@@ -463,10 +566,17 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
     safetySettings: SAFETY_SETTINGS
   });
 
+  const prioritySubjects = parseSubjectList(subjects);
+  const minDistinct = Math.max(5, Math.min(10, prioritySubjects.length + 3));
+
   const prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
   Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${targetExam}".
   Disponibilidade: ${hours} horas por dia.
-  Matérias: ${Array.isArray(subjects) ? subjects.join(", ") : subjects}.
+  Matérias prioritárias (dar mais tempo e mais recorrência): ${Array.isArray(subjects) ? subjects.join(", ") : subjects}.
+  
+  REGRA DE OURO: a lista acima NÃO é a lista completa do edital. Mesmo que venha só 1 matéria (ex: "Português"), você deve completar com outras matérias essenciais e típicas do concurso/cargo informado em "${targetExam}".
+  Distribua a semana em ciclo, com a(s) matéria(s) prioritária(s) aparecendo(em) mais vezes, sem excluir as demais.
+  MÍNIMO: inclua pelo menos ${minDistinct} matérias distintas ao longo da semana.
   
   REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
   1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos.
@@ -492,9 +602,29 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
     ]
   }`;
   
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-  return JSON.parse(extractJSON(text));
+  let parsed;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const attemptPrompt = attempt === 0
+      ? prompt
+      : `${prompt}
+
+RESTRIÇÕES ADICIONAIS (REFORÇO):
+- Se vier só 1 matéria na lista de prioridade, NÃO faça rotina só dela.
+- Garanta pelo menos ${minDistinct} matérias distintas ao longo da semana.
+- Segunda a sábado: inclua pelo menos 2 matérias diferentes por dia.`;
+
+    const result = await model.generateContent(attemptPrompt);
+    const text = result.response.text();
+    parsed = JSON.parse(extractJSON(text));
+
+    if (countDistinctRoutineSubjects(parsed) >= minDistinct) break;
+  }
+
+  if (countDistinctRoutineSubjects(parsed) < minDistinct) {
+    throw new Error("ROUTINE_LOW_DIVERSITY");
+  }
+
+  return parsed;
 }
 
 async function handleUpdateRadar(genAI, modelName) {

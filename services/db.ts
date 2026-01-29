@@ -1,5 +1,10 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { ChatMessage, StudyMaterial, StudyRoutine } from '../types';
+import { supabaseService } from './supabaseService';
+
+// Define se o app deve usar Supabase ou IndexedDB
+// Por padrão, se as chaves do Supabase estiverem configuradas, usaremos Supabase
+const USE_SUPABASE = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY && import.meta.env.VITE_SUPABASE_URL !== 'seu_url_do_supabase';
 
 interface BizuDB extends DBSchema {
   stats: {
@@ -77,6 +82,7 @@ const getDB = () => {
 };
 
 export const getUserStats = async () => {
+  if (USE_SUPABASE) return supabaseService.getUserStats();
   const db = await getDB();
   const stats = await db.get('stats', 'user_stats');
   if (!stats) {
@@ -91,6 +97,7 @@ export const getUserStats = async () => {
 };
 
 export const saveQuizResult = async (topic: string, total: number, score: number) => {
+  if (USE_SUPABASE) return supabaseService.saveQuizResult(topic, total, score);
   const db = await getDB();
   const tx = db.transaction(['stats', 'quiz_history'], 'readwrite');
   
@@ -141,32 +148,41 @@ export const saveQuizResult = async (topic: string, total: number, score: number
 };
 
 export const saveChatMessage = async (message: ChatMessage) => {
+  if (USE_SUPABASE) return supabaseService.saveChatMessage(message);
   const db = await getDB();
   await db.put('chat_messages', message);
 };
 
 export const getChatHistory = async (): Promise<ChatMessage[]> => {
+  if (USE_SUPABASE) return supabaseService.getChatHistory();
   const db = await getDB();
   return db.getAllFromIndex('chat_messages', 'by-timestamp');
 };
 
 export const clearChatHistory = async () => {
+    if (USE_SUPABASE) return supabaseService.clearChatHistory();
     const db = await getDB();
     await db.clear('chat_messages');
 };
 
 // Materials Helpers
 export const getAllMaterials = async (): Promise<StudyMaterial[]> => {
+  if (USE_SUPABASE) return supabaseService.getAllMaterials();
   const db = await getDB();
   return db.getAll('materials');
 };
 
 export const saveMaterial = async (material: StudyMaterial) => {
+  if (USE_SUPABASE) return supabaseService.saveMaterial(material);
   const db = await getDB();
   await db.put('materials', material);
 };
 
 export const saveMaterialsBatch = async (materials: StudyMaterial[]) => {
+  if (USE_SUPABASE) {
+    for (const m of materials) await supabaseService.saveMaterial(m);
+    return;
+  }
   const db = await getDB();
   const tx = db.transaction('materials', 'readwrite');
   const store = tx.objectStore('materials');
@@ -178,17 +194,20 @@ export const saveMaterialsBatch = async (materials: StudyMaterial[]) => {
 
 // Routine Helpers
 export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
+  if (USE_SUPABASE) return supabaseService.getStudyRoutine();
   const db = await getDB();
   return db.get('routine', 'user_routine');
 };
 
 export const saveStudyRoutine = async (routine: StudyRoutine) => {
+  if (USE_SUPABASE) return supabaseService.saveStudyRoutine(routine);
   const db = await getDB();
   routine.id = 'user_routine';
   await db.put('routine', routine);
 };
 
 export const deleteStudyRoutine = async () => {
+  if (USE_SUPABASE) return supabaseService.deleteStudyRoutine();
   const db = await getDB();
   await db.delete('routine', 'user_routine');
 };

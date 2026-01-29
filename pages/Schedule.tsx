@@ -124,11 +124,14 @@ const Schedule: React.FC = () => {
                 <textarea 
                   value={subjects}
                   onChange={(e) => setSubjects(e.target.value)}
-                  placeholder="Ex: Português, Raciocínio Lógico, Direito Administrativo..."
+                  placeholder="Ex: Português (prioridade), Raciocínio Lógico..."
                   className="w-full pl-12 pr-5 py-4 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50 outline-none font-bold text-slate-700 transition-all min-h-[120px] resize-none"
                   required
                 />
               </div>
+              <p className="mt-2 text-xs text-slate-400 font-bold leading-relaxed">
+                Pode colocar só 1 matéria. O BizuBot prioriza ela e completa o resto do edital.
+              </p>
             </div>
 
             <button 
