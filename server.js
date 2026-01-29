@@ -84,15 +84,24 @@ const SAFETY_SETTINGS = [
  */
 app.post('/webhooks/hubla', async (req, res) => {
   const event = req.body;
-  const hublaToken = req.headers['x-hubla-token'] || req.headers['authorization'];
+  const rawToken = req.headers['x-hubla-token'] || req.headers['authorization'];
+  const hublaToken = Array.isArray(rawToken)
+    ? rawToken[0]
+    : typeof rawToken === 'string'
+      ? rawToken.replace(/^Bearer\s+/i, '').trim()
+      : undefined;
 
   // Log para depuração
   console.log('Evento Hubla recebido:', JSON.stringify(event, null, 2));
-  if (hublaToken) console.log('Token recebido:', hublaToken);
 
   try {
-    const email = event.data?.user?.email || event.data?.customer?.email || event.user_email || event.email;
-    const status = event.event_type; // 'order_completed', 'subscription_cancelled', etc.
+    const expectedToken = process.env.HUBLA_WEBHOOK_TOKEN;
+    if (expectedToken && (!hublaToken || hublaToken !== expectedToken)) {
+      return res.status(401).send('Token inválido');
+    }
+
+    const email = event.data?.user?.email || event.data?.customer?.email || event.data?.buyer?.email || event.data?.client?.email || event.data?.email || event.user_email || event.customer_email || event.email;
+    const status = event.event_type || event.type || event.event || event.name || event.data?.event_type || event.data?.status || event.status || 'unknown';
 
     if (!email) {
       console.error('ERRO: Email não encontrado no payload da Hubla:', JSON.stringify(event));
