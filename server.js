@@ -89,11 +89,12 @@ app.post('/webhooks/hubla', async (req, res) => {
   console.log('Evento Hubla recebido:', JSON.stringify(event, null, 2));
 
   try {
-    const email = event.data?.user?.email || event.user_email;
+    const email = event.data?.user?.email || event.data?.customer?.email || event.user_email || event.email;
     const status = event.event_type; // 'order_completed', 'subscription_cancelled', etc.
 
     if (!email) {
-      return res.status(400).send('Email não encontrado no evento');
+      console.error('ERRO: Email não encontrado no payload da Hubla:', JSON.stringify(event));
+      return res.status(200).send('Webhook recebido, mas sem email para processar'); // Retornamos 200 para a Hubla não ficar tentando reenviar um erro
     }
 
     // 1. REGISTRAR O EVENTO NA TABELA DE VENDAS (PARA O DASHBOARD)
