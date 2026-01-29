@@ -91,22 +91,37 @@ app.post('/webhooks/hubla', async (req, res) => {
       return res.status(400).send('Email não encontrado no evento');
     }
 
-    let isActive = false;
+    // 1. REGISTRAR O EVENTO NA TABELA DE VENDAS (PARA O DASHBOARD)
+    const { error: eventError } = await supabase
+      .from('sales_events')
+      .insert([{
+        email: email?.toLowerCase(),
+        event_type: status,
+        raw_data: event,
+        created_at: new Date().toISOString()
+      }]);
 
-    // Lógica simplificada de status da Hubla
-    // Você deve ajustar 'order_completed' e 'subscription_renewed' conforme a documentação exata da Hubla
-    if (['order_completed', 'subscription_renewed', 'approved'].includes(status)) {
-      isActive = true;
-    } else if (['subscription_cancelled', 'refunded', 'expired'].includes(status)) {
-      isActive = false;
-    } else {
-      // Se for um evento desconhecido, não alteramos nada ou logamos
-      console.log(`Evento desconhecido: ${status}`);
-      return res.status(200).send('Evento ignorado');
+    if (eventError) {
+      console.error('Erro ao registrar evento de venda:', eventError);
     }
 
-    // Atualiza ou cria o perfil no Supabase
-    const { error } = await supabase
+    // 2. LOGICA DE ACESSO AO APP (TABELA PROFILES)
+    let isActive = false;
+    const activeStatus = ['order_completed', 'subscription_renewed', 'approved', 'subscription_active', 'access_granted'];
+    const inactiveStatus = ['subscription_cancelled', 'refunded', 'expired', 'access_removed', 'chargeback', 'subscription_deactivated'];
+
+    if (activeStatus.includes(status)) {
+      isActive = true;
+    } else if (inactiveStatus.includes(status)) {
+      isActive = false;
+    } else {
+      // Se for um evento de "lead", "carrinho abandonado" ou outro que não mude o acesso
+      console.log(`Evento informativo recebido: ${status}`);
+      return res.status(200).send('Evento registrado para o dashboard');
+    }
+
+    // Atualiza ou cria o perfil no Supabase apenas para eventos que mudam acesso
+    const { error: profileError } = await supabase
       .from('profiles')
       .upsert({ 
         email: email.toLowerCase(),
@@ -115,13 +130,13 @@ app.post('/webhooks/hubla', async (req, res) => {
         updated_at: new Date().toISOString()
       }, { onConflict: 'email' });
 
-    if (error) {
-      console.error('Erro ao atualizar perfil via webhook:', error);
+    if (profileError) {
+      console.error('Erro ao atualizar perfil via webhook:', profileError);
       return res.status(500).send('Erro interno');
     }
 
     console.log(`Perfil ${email} atualizado: Ativo = ${isActive}`);
-    res.status(200).send('Webhook processado com sucesso');
+    res.status(200).send('Webhook processado e registrado');
 
   } catch (err) {
     console.error('Erro no processamento do webhook:', err);

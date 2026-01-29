@@ -7,26 +7,38 @@ import Materials from './pages/Materials';
 import Mentor from './pages/Mentor';
 import Schedule from './pages/Schedule';
 import Login from './pages/Login';
+import Admin from './pages/Admin';
 import { supabase } from './services/supabaseClient';
 
 function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const ADMIN_EMAILS = ['samuelmaislegal345@gmail.com']; // Adicione seu e-mail aqui
 
   useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) checkSubscription(session.user.email);
+      if (session) {
+        checkSubscription(session.user.email);
+        setIsAdmin(ADMIN_EMAILS.includes(session.user.email || ''));
+      }
       setLoading(false);
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) checkSubscription(session.user.email);
-      else setHasSubscription(false);
+      if (session) {
+        checkSubscription(session.user.email);
+        setIsAdmin(ADMIN_EMAILS.includes(session.user.email || ''));
+      } else {
+        setHasSubscription(false);
+        setIsAdmin(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -89,6 +101,7 @@ function App() {
           <Route path="/materials" element={<Materials />} />
           <Route path="/mentor" element={<Mentor />} />
           <Route path="/schedule" element={<Schedule />} />
+          {isAdmin && <Route path="/admin" element={<Admin />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
