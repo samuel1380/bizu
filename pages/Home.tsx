@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Calendar, CheckCircle, TrendingUp, Sparkles, Trophy, Flame, DollarSign, Briefcase, Building2, Zap, BookOpen, MessageSquareText, ChevronRight, RefreshCw, ExternalLink } from 'lucide-react';
+import { ArrowRight, Calendar, CheckCircle, TrendingUp, Sparkles, Trophy, Flame, DollarSign, Briefcase, Building2, Zap, BookOpen, MessageSquareText, ChevronRight, RefreshCw, ExternalLink, ShieldCheck } from 'lucide-react';
 import { NewsItem } from '../types';
 import { getUserStats } from '../services/db';
 import { updateContestRadar } from '../services/gemini';
+import { supabase } from '../services/supabaseClient';
 
 // Dados iniciais (Cache/Placeholder) para não gastar API no load
 const INITIAL_NEWS: NewsItem[] = [
@@ -73,11 +74,20 @@ const Home: React.FC = () => {
   const [news, setNews] = useState<NewsItem[]>(INITIAL_NEWS);
   const [loadingStats, setLoadingStats] = useState(true);
   const [refreshingRadar, setRefreshingRadar] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const ADMIN_EMAILS = ['samuelmaislegal345@gmail.com'];
 
   // Load Apenas DB Stats (Sem API Call automática)
   useEffect(() => {
     const fetchStats = async () => {
       try {
+        // Verificar se é admin
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email) {
+          setIsAdmin(ADMIN_EMAILS.includes(session.user.email));
+        }
+
         const data = await getUserStats();
         const performance = data.totalQuestions > 0 
           ? Math.round((data.totalCorrect / data.totalQuestions) * 100) 
@@ -133,7 +143,13 @@ const Home: React.FC = () => {
             <p className="text-slate-400 font-bold">Vamos bater a meta de hoje?</p>
         </div>
         
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+            {isAdmin && (
+              <Link to="/admin" className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl border-b-4 border-slate-950 hover:bg-slate-900 transition-all font-black text-xs">
+                  <ShieldCheck size={18} className="text-blue-400" />
+                  PAINEL ADMIN
+              </Link>
+            )}
             <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border-2 border-b-4 border-slate-200">
                 <Flame className="text-orange-500 fill-current" size={20} />
                 <span className="font-black text-slate-600">{stats.currentStreak}</span>

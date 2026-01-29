@@ -133,7 +133,8 @@ app.post('/webhooks/hubla', async (req, res) => {
       'subscription_active', 
       'access_granted',
       'payment_confirmed',
-      'invoice_paid'
+      'invoice_paid',
+      'purchase_approved'
     ];
     
     // Status que BLOQUEIAM o acesso
@@ -148,33 +149,40 @@ app.post('/webhooks/hubla', async (req, res) => {
       'order_cancelled'
     ];
 
-    if (activeStatus.includes(status)) {
+    const lowerStatus = status.toLowerCase();
+    const isEventActive = activeStatus.some(s => lowerStatus.includes(s)) || activeStatus.includes(lowerStatus);
+    const isEventInactive = inactiveStatus.some(s => lowerStatus.includes(s)) || inactiveStatus.includes(lowerStatus);
+
+    if (isEventActive) {
       isActive = true;
-    } else if (inactiveStatus.includes(status)) {
+      console.log(`✅ [LIBERAÇÃO] Evento "${status}" reconhecido como ATIVO para ${email}`);
+    } else if (isEventInactive) {
       isActive = false;
+      console.log(`❌ [BLOQUEIO] Evento "${status}" reconhecido como INATIVO para ${email}`);
     } else {
       // Se for um evento de "lead", "carrinho abandonado" ou outro que não mude o acesso
-      console.log(`Evento informativo recebido: ${status}`);
+      console.log(`ℹ️ [INFO] Evento informativo recebido: ${status} para ${email}`);
       return res.status(200).send('Evento registrado para o dashboard');
     }
 
     // Atualiza ou cria o perfil no Supabase apenas para eventos que mudam acesso
-    const { error: profileError } = await supabase
+    const { data: updatedProfile, error: profileError } = await supabase
       .from('profiles')
       .upsert({ 
         email: email.toLowerCase(),
         subscription_active: isActive,
         last_webhook_event: status,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'email' });
+      }, { onConflict: 'email' })
+      .select();
 
     if (profileError) {
-      console.error('Erro ao atualizar perfil via webhook:', profileError);
-      return res.status(500).send('Erro interno');
+      console.error('🚨 ERRO CRÍTICO ao atualizar perfil via webhook:', profileError);
+      return res.status(500).send('Erro interno ao atualizar banco de dados');
     }
 
-    console.log(`Perfil ${email} atualizado: Ativo = ${isActive}`);
-    res.status(200).send('Webhook processado e registrado');
+    console.log(`✨ SUCESSO: Perfil ${email} atualizado. Status Final: ${isActive ? 'ATIVO ✅' : 'INATIVO ❌'}`);
+    res.status(200).send('Webhook processado e acesso garantido');
 
   } catch (err) {
     console.error('Erro no processamento do webhook:', err);

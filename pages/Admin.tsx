@@ -29,8 +29,18 @@ interface SalesEvent {
   raw_data: any;
 }
 
+interface Profile {
+  email: string;
+  subscription_active: boolean;
+  last_webhook_event: string;
+  updated_at: string;
+  created_at: string;
+}
+
 export default function Admin() {
   const [events, setEvents] = useState<SalesEvent[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeTab, setActiveTab] = useState<'sales' | 'users'>('sales');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
@@ -46,8 +56,14 @@ export default function Admin() {
   });
 
   useEffect(() => {
-    fetchEvents();
+    fetchAllData();
   }, []);
+
+  async function fetchAllData() {
+    setLoading(true);
+    await Promise.all([fetchEvents(), fetchProfiles()]);
+    setLoading(false);
+  }
 
   async function fetchEvents() {
     try {
@@ -63,8 +79,22 @@ export default function Admin() {
       }
     } catch (err) {
       console.error('Erro ao buscar eventos:', err);
-    } finally {
-      setLoading(false);
+    }
+  }
+
+  async function fetchProfiles() {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        setProfiles(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar perfis:', err);
     }
   }
 
@@ -185,16 +215,32 @@ export default function Admin() {
               <ArrowLeft size={18} /> VOLTAR AO APP
             </Link>
             <h1 className="text-3xl font-black text-slate-700 tracking-tight">
-                Dashboard de Vendas 💰
+                Dashboard de Controle ⚙️
             </h1>
-            <p className="text-slate-400 font-bold">Métricas detalhadas do seu negócio</p>
+            <p className="text-slate-400 font-bold">Gerencie vendas e alunos do Bizu</p>
         </div>
         
         <div className="flex gap-3">
-            <button onClick={fetchEvents} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl border-b-4 border-blue-700 hover:bg-blue-600 transition-all font-black text-sm">
-                ATUALIZAR DADOS
+            <button onClick={fetchAllData} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl border-b-4 border-blue-700 hover:bg-blue-600 transition-all font-black text-sm">
+                ATUALIZAR TUDO
             </button>
         </div>
+      </div>
+
+      {/* Tabs de Navegação */}
+      <div className="flex gap-2 p-1 bg-slate-200 rounded-2xl w-fit">
+        <button 
+          onClick={() => setActiveTab('sales')}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'sales' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          VENDAS & EVENTOS
+        </button>
+        <button 
+          onClick={() => setActiveTab('users')}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          LISTA DE ALUNOS ({profiles.length})
+        </button>
       </div>
 
       {/* Grid de Faturamento e Vendas Principais */}
@@ -240,81 +286,128 @@ export default function Admin() {
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
         <input 
           type="text" 
-          placeholder="Buscar por e-mail, evento ou status..."
+          placeholder={activeTab === 'sales' ? "Buscar por e-mail, evento ou status..." : "Buscar aluno por e-mail..."}
           className="w-full pl-12 pr-4 py-4 bg-white border-2 border-b-4 border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-600 shadow-sm"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      {/* Tabela de Atividades Detalhada */}
-      <div className="space-y-4">
-        <h3 className="text-xl font-black text-slate-700 flex items-center gap-2 px-2">
-            <Clock className="text-blue-500" />
-            Histórico Detalhado
-        </h3>
+      {activeTab === 'sales' ? (
+        <div className="space-y-4">
+          <h3 className="text-xl font-black text-slate-700 flex items-center gap-2 px-2">
+              <Clock className="text-blue-500" />
+              Histórico Detalhado
+          </h3>
 
-        <div className="space-y-3">
-          {filteredEvents.map((event) => (
-            <div key={event.id} className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 overflow-hidden transition-all group">
-              <div 
-                className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={() => setSelectedEvent(selectedEvent === event.id ? null : event.id)}
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${getEventBadge(event.event_type).includes('green') ? 'bg-green-50 border-green-100' : 'bg-slate-50 border-slate-100'}`}>
-                    <Mail className={getEventBadge(event.event_type).includes('green') ? 'text-green-600' : 'text-slate-400'} size={24} />
+          <div className="space-y-3">
+            {filteredEvents.map((event) => (
+              <div key={event.id} className="bg-white rounded-2xl border-2 border-slate-200 border-b-4 overflow-hidden transition-all group">
+                <div 
+                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => setSelectedEvent(selectedEvent === event.id ? null : event.id)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${getEventBadge(event.event_type).includes('green') ? 'bg-green-50 border-green-100' : 'bg-slate-50 border-slate-100'}`}>
+                      <Mail className={getEventBadge(event.event_type).includes('green') ? 'text-green-600' : 'text-slate-400'} size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-700 leading-tight">
+                        {event.email}
+                      </h4>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">
+                        <Calendar size={12} />
+                        {new Date(event.created_at).toLocaleString('pt-BR')}
+                        <span className="mx-1">•</span>
+                        <span>{event.raw_data?.data?.offer_name || event.raw_data?.offer_name || 'Bizu App'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-black text-slate-700 leading-tight">
-                      {event.email}
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">
-                      <Calendar size={12} />
-                      {new Date(event.created_at).toLocaleString('pt-BR')}
-                      <span className="mx-1">•</span>
-                      <span>{event.raw_data?.data?.offer_name || event.raw_data?.offer_name || 'Bizu App'}</span>
+
+                  <div className="flex items-center gap-3 self-end md:self-center">
+                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-2 ${getEventBadge(event.event_type)}`}>
+                      {formatEventType(event.event_type)}
+                    </span>
+                    <div className="text-slate-400">
+                      {selectedEvent === event.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 self-end md:self-center">
-                  <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-2 ${getEventBadge(event.event_type)}`}>
-                    {formatEventType(event.event_type)}
-                  </span>
-                  <div className="text-slate-400">
-                    {selectedEvent === event.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                {/* Detalhes do Webhook (JSON) */}
+                {selectedEvent === event.id && (
+                  <div className="p-4 bg-slate-900 text-blue-300 font-mono text-xs overflow-x-auto border-t-2 border-slate-200">
+                    <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+                      <span className="text-slate-500 font-bold uppercase tracking-widest">DADOS BRUTOS DO WEBHOOK</span>
+                      <button 
+                        onClick={() => console.log(event.raw_data)}
+                        className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded transition-colors"
+                      >
+                        LOG NO CONSOLE
+                      </button>
+                    </div>
+                    <pre className="whitespace-pre-wrap leading-relaxed">
+                      {JSON.stringify(event.raw_data, null, 2)}
+                    </pre>
                   </div>
+                )}
+              </div>
+            ))}
+
+            {filteredEvents.length === 0 && (
+              <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
+                <p className="text-slate-400 font-bold italic">Nenhum evento encontrado para esta busca.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <h3 className="text-xl font-black text-slate-700 flex items-center gap-2 px-2">
+              <Users className="text-blue-500" />
+              Lista Geral de Alunos
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {profiles
+              .filter(p => p.email.toLowerCase().includes(searchTerm.toLowerCase()))
+              .map((profile) => (
+              <div key={profile.email} className="bg-white p-5 rounded-2xl border-2 border-slate-200 border-b-4 flex items-center justify-between group hover:border-blue-200 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${profile.subscription_active ? 'bg-green-100 border-green-200' : 'bg-slate-100 border-slate-200'}`}>
+                    <Users size={20} className={profile.subscription_active ? 'text-green-600' : 'text-slate-400'} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-700 leading-tight">{profile.email}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
+                        {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                        <Clock size={10} />
+                        {new Date(profile.updated_at).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-right">
+                   <p className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter mb-1">Último Evento</p>
+                   <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                     {profile.last_webhook_event || 'N/A'}
+                   </span>
                 </div>
               </div>
+            ))}
 
-              {/* Detalhes do Webhook (JSON) */}
-              {selectedEvent === event.id && (
-                <div className="p-4 bg-slate-900 text-blue-300 font-mono text-xs overflow-x-auto border-t-2 border-slate-200">
-                  <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
-                    <span className="text-slate-500 font-bold uppercase tracking-widest">DADOS BRUTOS DO WEBHOOK</span>
-                    <button 
-                      onClick={() => console.log(event.raw_data)}
-                      className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded transition-colors"
-                    >
-                      LOG NO CONSOLE
-                    </button>
-                  </div>
-                  <pre className="whitespace-pre-wrap leading-relaxed">
-                    {JSON.stringify(event.raw_data, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {filteredEvents.length === 0 && (
-            <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
-              <p className="text-slate-400 font-bold italic">Nenhum evento encontrado para esta busca.</p>
-            </div>
-          )}
+            {profiles.length === 0 && (
+              <div className="md:col-span-2 bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
+                <p className="text-slate-400 font-bold italic">Nenhum aluno cadastrado no sistema ainda.</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
