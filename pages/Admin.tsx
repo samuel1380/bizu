@@ -80,8 +80,16 @@ export default function Admin() {
       'subscription_active', 
       'access_granted',
       'payment_confirmed',
-      'invoice_paid'
+      'invoice_paid',
+      'purchase_approved'
     ].includes(type);
+
+    const isAbandoned = (type: string) => [
+      'lead_abandoned_cart',
+      'abandoned_cart',
+      'cart_abandoned',
+      'lead'
+    ].includes(type.toLowerCase()) || type.toLowerCase().includes('abandoned') || type.toLowerCase().includes('abandonado');
     
     let totalSales = 0;
     let salesToday = 0;
@@ -89,10 +97,11 @@ export default function Admin() {
     let revenueTotal = 0;
     let revenueMonth = 0;
     let abandonedCarts = 0;
+    let abandonedToday = 0;
     
     data.forEach(event => {
       const eventDate = new Date(event.created_at);
-      const price = event.raw_data?.data?.price || event.raw_data?.price || 97; // Valor padrão se não vier no webhook
+      const price = event.raw_data?.data?.price || event.raw_data?.price || 97;
 
       if (isSuccess(event.event_type)) {
         totalSales++;
@@ -107,8 +116,11 @@ export default function Admin() {
         }
       }
 
-      if (event.event_type.includes('abandoned') || event.event_type.includes('cart') || event.event_type === 'lead') {
+      if (isAbandoned(event.event_type)) {
         abandonedCarts++;
+        if (eventDate >= today) {
+          abandonedToday++;
+        }
       }
     });
 
@@ -120,19 +132,33 @@ export default function Admin() {
       salesMonth,
       revenueTotal,
       revenueMonth,
-      activeSubscriptions: totalSales, // Simplificado
+      activeSubscriptions: totalSales,
       abandonedCarts,
       totalLeads: leads
     });
   }
 
   const getEventBadge = (type: string) => {
-    const success = ['order_completed', 'approved', 'subscription_renewed', 'subscription_active'];
-    const danger = ['subscription_cancelled', 'refunded', 'expired', 'chargeback'];
+    const success = ['order_completed', 'approved', 'subscription_renewed', 'subscription_active', 'purchase_approved', 'payment_confirmed'];
+    const danger = ['subscription_cancelled', 'refunded', 'expired', 'chargeback', 'payment_failed'];
+    const warning = ['lead_abandoned_cart', 'abandoned_cart', 'cart_abandoned', 'lead'];
     
-    if (success.includes(type)) return 'bg-green-500 text-white border-green-700';
-    if (danger.includes(type)) return 'bg-red-500 text-white border-red-700';
+    const lowerType = type.toLowerCase();
+    if (success.includes(lowerType)) return 'bg-green-500 text-white border-green-700';
+    if (danger.includes(lowerType)) return 'bg-red-500 text-white border-red-700';
+    if (warning.includes(lowerType) || lowerType.includes('abandon')) return 'bg-orange-500 text-white border-orange-700';
     return 'bg-blue-500 text-white border-blue-700';
+  };
+
+  const formatEventType = (type: string) => {
+    if (type === 'lead_abandoned_cart') return '🛒 Carrinho Abandonado';
+    if (type === 'purchase_approved' || type === 'approved') return '✅ Compra Aprovada';
+    if (type === 'payment_confirmed') return '💰 Pagamento Confirmado';
+    if (type === 'order_completed') return '🎉 Pedido Completo';
+    if (type === 'subscription_active') return '🔄 Assinatura Ativa';
+    if (type === 'subscription_renewed') return '♻️ Renovação';
+    if (type === 'lead') return '📧 Novo Lead';
+    return type.replace(/_/g, ' ').toUpperCase();
   };
 
   const filteredEvents = events.filter(e => 
@@ -172,29 +198,40 @@ export default function Admin() {
       </div>
 
       {/* Grid de Faturamento e Vendas Principais */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Vendas Hoje" value={stats.salesToday} icon={<Zap />} color="bg-yellow-100 text-yellow-600" borderColor="border-yellow-200" borderBottomColor="border-b-yellow-400" />
+        <StatCard title="Vendas Mês" value={stats.salesMonth} icon={<TrendingUp />} color="bg-green-100 text-green-600" borderColor="border-green-200" borderBottomColor="border-b-green-400" />
+        <StatCard title="Abandonos" value={stats.abandonedCarts} icon={<ShoppingCart />} color="bg-orange-100 text-orange-600" borderColor="border-orange-200" borderBottomColor="border-b-orange-400" />
+        <StatCard title="Faturamento Total" value={`R$ ${stats.revenueTotal.toLocaleString()}`} icon={<DollarSign />} color="bg-blue-100 text-blue-600" borderColor="border-blue-200" borderBottomColor="border-b-blue-400" />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 grid grid-cols-2 gap-4">
-            <StatCard title="Vendas Hoje" value={stats.salesToday} icon={<Zap />} color="bg-yellow-100 text-yellow-600" borderColor="border-yellow-200" borderBottomColor="border-b-yellow-400" />
-            <StatCard title="Vendas Mês" value={stats.salesMonth} icon={<TrendingUp />} color="bg-green-100 text-green-600" borderColor="border-green-200" borderBottomColor="border-b-green-400" />
-            <StatCard title="Faturamento Mês" value={`R$ ${stats.revenueMonth.toLocaleString()}`} icon={<DollarSign />} color="bg-blue-100 text-blue-600" borderColor="border-blue-200" borderBottomColor="border-b-blue-400" />
-            <StatCard title="Faturamento Total" value={`R$ ${stats.revenueTotal.toLocaleString()}`} icon={<ArrowUpRight />} color="bg-purple-100 text-purple-600" borderColor="border-purple-200" borderBottomColor="border-b-purple-400" />
+        <div className="md:col-span-2 bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 flex flex-col justify-center">
+            <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight">Resumo de Conversão</h3>
+                <div className="bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 uppercase">Tempo Real</div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <p className="text-3xl font-black text-slate-700">{stats.totalLeads}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase">Total Leads</p>
+                </div>
+                <div>
+                    <p className="text-3xl font-black text-blue-600">{stats.totalSales}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase">Vendas</p>
+                </div>
+                <div>
+                    <p className="text-3xl font-black text-orange-500">{stats.abandonedCarts}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase">Abandonos</p>
+                </div>
+            </div>
         </div>
         <div className="bg-white p-6 rounded-3xl border-2 border-slate-200 border-b-8 flex flex-col justify-center text-center">
-            <div className="mx-auto mb-4 bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center border-2 border-blue-200">
-                <Users className="text-blue-600" size={32} />
+            <div className="mx-auto mb-4 bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center border-2 border-purple-200">
+                <Users className="text-purple-600" size={32} />
             </div>
-            <h3 className="text-4xl font-black text-slate-700">{stats.totalLeads}</h3>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Leads Totais</p>
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2">
-                <div>
-                    <p className="text-2xl font-black text-slate-700">{stats.activeSubscriptions}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Ativos</p>
-                </div>
-                <div>
-                    <p className="text-2xl font-black text-slate-700">{stats.abandonedCarts}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Abandonos</p>
-                </div>
-            </div>
+            <h3 className="text-4xl font-black text-slate-700">{stats.activeSubscriptions}</h3>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Alunos Ativos</p>
         </div>
       </div>
 
@@ -243,7 +280,7 @@ export default function Admin() {
 
                 <div className="flex items-center gap-3 self-end md:self-center">
                   <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wide border-2 ${getEventBadge(event.event_type)}`}>
-                    {event.event_type.replace(/_/g, ' ')}
+                    {formatEventType(event.event_type)}
                   </span>
                   <div className="text-slate-400">
                     {selectedEvent === event.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
