@@ -41,6 +41,11 @@ DIRETRIZES PARA ROTINAS:
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// --- MIDDLEWARES (Devem vir ANTES das rotas) ---
+app.use(cors());
+app.use(express.json());
+app.use(express.static(join(__dirname, 'dist')));
+
 // --- LISTA UNIVERSAL DE MODELOS ---
 // A ordem aqui define a prioridade.
 // 1. gemini-1.5-flash: Maior limite gratuito, extremamente rápido e estável.
@@ -107,8 +112,29 @@ app.post('/webhooks/hubla', async (req, res) => {
 
     // 2. LOGICA DE ACESSO AO APP (TABELA PROFILES)
     let isActive = false;
-    const activeStatus = ['order_completed', 'subscription_renewed', 'approved', 'subscription_active', 'access_granted'];
-    const inactiveStatus = ['subscription_cancelled', 'refunded', 'expired', 'access_removed', 'chargeback', 'subscription_deactivated'];
+    
+    // Status que LIBERAM ou MANTÊM o acesso
+    const activeStatus = [
+      'order_completed', 
+      'subscription_renewed', 
+      'approved', 
+      'subscription_active', 
+      'access_granted',
+      'payment_confirmed',
+      'invoice_paid'
+    ];
+    
+    // Status que BLOQUEIAM o acesso
+    const inactiveStatus = [
+      'subscription_cancelled', 
+      'refunded', 
+      'expired', 
+      'access_removed', 
+      'chargeback', 
+      'subscription_deactivated',
+      'payment_failed',
+      'order_cancelled'
+    ];
 
     if (activeStatus.includes(status)) {
       isActive = true;
@@ -143,12 +169,6 @@ app.post('/webhooks/hubla', async (req, res) => {
     res.status(500).send('Erro interno');
   }
 });
-
-// --- MIDDLEWARES ---
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(join(__dirname, 'dist')));
 
 // --- HELPERS DE PARSEAMENTO ROBUSTO ---
 

@@ -73,7 +73,15 @@ export default function Admin() {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const isSuccess = (type: string) => ['order_completed', 'approved', 'subscription_renewed'].includes(type);
+    const isSuccess = (type: string) => [
+      'order_completed', 
+      'approved', 
+      'subscription_renewed', 
+      'subscription_active', 
+      'access_granted',
+      'payment_confirmed',
+      'invoice_paid'
+    ].includes(type);
     
     let totalSales = 0;
     let salesToday = 0;
