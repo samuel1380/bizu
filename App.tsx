@@ -49,11 +49,14 @@ function App() {
     if (!email) return;
     const { data, error } = await supabase
       .from('profiles')
-      .select('subscription_active')
+      .select('subscription_active, trial_ends_at')
       .eq('email', email)
       .single();
     
-    if (data?.subscription_active) {
+    const isSubscriptionActive = data?.subscription_active === true;
+    const isTrialActive = data?.trial_ends_at && new Date(data.trial_ends_at) > new Date();
+
+    if (isSubscriptionActive || isTrialActive) {
       setHasSubscription(true);
     } else {
       setHasSubscription(false);
