@@ -17,7 +17,8 @@ export default function Login() {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        alert('Verifique seu e-mail para confirmar o cadastro!');
+        alert('Cadastro realizado com sucesso! Você já pode entrar.');
+        setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

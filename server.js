@@ -62,12 +62,12 @@ const MODEL_FALLBACK_LIST = [
 
 const OPENROUTER_MODELS = [
   "openai/gpt-oss-120b:free",
-  "xiaomi/mimo-v2-flash:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemini-2.0-pro-exp-02-05:free",
   "google/gemini-2.0-flash-exp:free",
-  "google/gemini-2.0-flash-001",
-  "openai/gpt-4o-mini",
-  "meta-llama/llama-3.1-8b-instruct",
-  "qwen/qwen-2.5-7b-instruct"
+  "mistralai/pixtral-12b:free",
+  "qwen/qwen-2-7b-instruct:free",
+  "microsoft/phi-3-medium-128k-instruct:free"
 ];
 
 const SAFETY_SETTINGS = [
