@@ -119,6 +119,7 @@ function App() {
             <Route path="/mentor" element={<Mentor />} />
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/admin" element={isAdmin ? <Admin /> : <Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>
       </Router>

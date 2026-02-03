@@ -447,7 +447,7 @@ async function runWithModelFallback(ai, actionName, payload) {
             Matérias prioritárias (dar mais tempo e mais recorrência): ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
             
             REGRA DE OURO: a lista acima NÃO é a lista completa do edital. Mesmo que venha só 1 matéria (ex: "Português"), você deve completar com outras matérias essenciais e típicas do concurso/cargo informado em "${payload.targetExam}".
-            Distribua a semana em ciclo, com a(s) matéria(s) prioritária(s) aparecendo(em) mais vezes, sem excluir as demais.
+            Distribua a semana em ciclo, with a(s) matéria(s) prioritária(s) aparecendo(em) mais vezes, sem excluir as demais.
             MÍNIMO: inclua pelo menos 5 matérias distintas ao longo da semana.
             
             REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
@@ -469,7 +469,12 @@ async function runWithModelFallback(ai, actionName, payload) {
             }`;
             isJson = true;
           } else if (actionName === 'updateRadar') {
-            prompt = `Liste 5 concursos previstos. JSON Array: [{institution, title, forecast, status, salary, board, url}]`;
+            const today = new Date().toLocaleDateString('pt-BR');
+            const existingTitles = Array.isArray(payload?.existingTitles) ? payload.existingTitles.join(", ") : "Nenhum";
+            prompt = `Você é um Analista de Concursos. Hoje é dia ${today}.
+            Liste 5 concursos IMPORTANTES de 2026 que NÃO estão nesta lista: [${existingTitles}].
+            Se não houver NADA novo de 2026 para adicionar, responda APENAS: {"no_updates": true}.
+            Caso contrário, envie o JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
             isJson = true;
           } else if (actionName === 'createCustomMaterial') {
             prompt = `Você é um Especialista em Concursos. Crie um material de estudo estratégico baseado no seguinte tema: "${payload.topic}".
@@ -683,7 +688,7 @@ RESTRIÇÕES ADICIONAIS (REFORÇO):
   return parsed;
 }
 
-async function handleUpdateRadar(genAI, modelName) {
+async function handleUpdateRadar(genAI, modelName, payload) {
   const model = genAI.getGenerativeModel({ 
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
@@ -691,9 +696,30 @@ async function handleUpdateRadar(genAI, modelName) {
     safetySettings: SAFETY_SETTINGS
   });
 
-  const prompt = `Liste 5 concursos previstos. JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+  const today = new Date().toLocaleDateString('pt-BR');
+  const existingTitles = Array.isArray(payload?.existingTitles) ? payload.existingTitles.join(", ") : "Nenhum";
+
+  const prompt = `Você é um Analista de Concursos. Hoje é dia ${today}.
+  Sua tarefa é listar os 5 concursos mais importantes e recentes (previstos ou com edital aberto) para o ano de 2026 no Brasil.
+  
+  REGRAS CRÍTICAS:
+  1. FOCO TEMPORAL: Apenas concursos que ocorrerão ou terão edital a partir de hoje (${today}).
+  2. NOVIDADE: NÃO inclua nenhum destes concursos que já estão na lista: [${existingTitles}].
+  3. SE NÃO HOUVER NOVIDADES: Se todos os concursos relevantes de 2026 já estiverem na lista acima e não houver NADA de novo ou mais importante para adicionar, responda APENAS: {"no_updates": true}.
+  4. FORMATO: Se houver novidades, responda um JSON Array com exatamente 5 itens.
+  
+  Schema (se houver novidade): [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto/Edital Aberto","salary":"R$","board":"Banca","url":""}]
+  Schema (se NÃO houver novidade): {"no_updates": true}`;
+
   const result = await model.generateContent(prompt);
-  return ensureArray(JSON.parse(extractJSON(result.response.text())));
+  const text = extractJSON(result.response.text());
+  const parsed = JSON.parse(text);
+
+  if (parsed.no_updates) {
+    return { no_updates: true };
+  }
+
+  return ensureArray(parsed);
 }
 
 async function handleCreateCustomMaterial(genAI, modelName, { topic }) {

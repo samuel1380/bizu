@@ -73,8 +73,13 @@ export const generateStudyRoutine = async (targetExam: string, hours: number, su
   };
 };
 
-export const updateContestRadar = async (): Promise<NewsItem[]> => {
-  const result = await apiCall('updateRadar');
+export const updateContestRadar = async (existingTitles: string[] = []): Promise<any> => {
+  const result = await apiCall('updateRadar', { existingTitles });
+  
+  if (result.no_updates) {
+    return { no_updates: true };
+  }
+
   return result.map((item: any, index: number) => ({
     ...item,
     id: item.id || `news-${Date.now()}-${index}`

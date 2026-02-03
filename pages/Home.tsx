@@ -111,8 +111,14 @@ const Home: React.FC = () => {
   const handleRefreshRadar = async () => {
     setRefreshingRadar(true);
     try {
-      const updatedNews = await updateContestRadar();
-      setNews(updatedNews);
+      const existingTitles = news.map(item => item.institution + " - " + item.title);
+      const updatedNews = await updateContestRadar(existingTitles);
+      
+      if (updatedNews.no_updates) {
+        alert("A lista já está atualizada com os concursos mais recentes de 2026!");
+      } else {
+        setNews(updatedNews);
+      }
     } catch (error) {
       console.error("Failed to update radar", error);
       alert("A IA está ocupada no momento (Erro 429). Tente novamente em 1 minuto.");
