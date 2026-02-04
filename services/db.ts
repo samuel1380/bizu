@@ -192,6 +192,12 @@ export const saveMaterialsBatch = async (materials: StudyMaterial[]) => {
   await tx.done;
 };
 
+export const clearAllMaterials = async () => {
+  if (USE_SUPABASE) return supabaseService.clearAllMaterials();
+  const db = await getDB();
+  await db.clear('materials');
+};
+
 // Routine Helpers
 export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
   if (USE_SUPABASE) return supabaseService.getStudyRoutine();

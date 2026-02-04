@@ -23,6 +23,9 @@ export const supabaseService = {
   },
 
   async saveQuizResult(topic: string, total: number, score: number) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     // 1. Save History
     const { error: historyError } = await supabase
       .from('quiz_history')
@@ -31,6 +34,7 @@ export const supabaseService = {
         total_questions: total,
         score,
         date: new Date().toISOString(),
+        user_id: user.id
       });
 
     if (historyError) console.error('Erro ao salvar histórico de quiz:', historyError);
@@ -42,6 +46,7 @@ export const supabaseService = {
     const updatedStats = {
       ...stats,
       id: 'user_stats',
+      user_id: user.id,
       totalQuestions: stats.totalQuestions + total,
       totalCorrect: stats.totalCorrect + score,
     };
@@ -68,9 +73,14 @@ export const supabaseService = {
 
   // Chat
   async saveChatMessage(message: ChatMessage) {
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
       .from('chat_messages')
-      .insert(message);
+      .upsert({
+        ...message,
+        user_id: user?.id,
+        timestamp: message.timestamp.toISOString()
+      });
     if (error) console.error('Erro ao salvar mensagem de chat:', error);
   },
 
@@ -84,14 +94,19 @@ export const supabaseService = {
       console.error('Erro ao buscar histórico de chat:', error);
       return [];
     }
-    return data || [];
+    return (data || []).map(m => ({
+      ...m,
+      timestamp: new Date(m.timestamp)
+    }));
   },
 
   async clearChatHistory() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { error } = await supabase
       .from('chat_messages')
       .delete()
-      .neq('id', ''); // Delete all
+      .eq('user_id', user.id);
     if (error) console.error('Erro ao limpar histórico de chat:', error);
   },
 
@@ -99,7 +114,8 @@ export const supabaseService = {
   async getAllMaterials(): Promise<StudyMaterial[]> {
     const { data, error } = await supabase
       .from('materials')
-      .select('*');
+      .select('*')
+      .order('created_at', { ascending: false });
     if (error) {
       console.error('Erro ao buscar materiais:', error);
       return [];
@@ -108,10 +124,24 @@ export const supabaseService = {
   },
 
   async saveMaterial(material: StudyMaterial) {
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
       .from('materials')
-      .upsert(material);
+      .upsert({
+        ...material,
+        user_id: user?.id
+      });
     if (error) console.error('Erro ao salvar material:', error);
+  },
+
+  async clearAllMaterials() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from('materials')
+      .delete()
+      .eq('user_id', user.id);
+    if (error) console.error('Erro ao limpar materiais:', error);
   },
 
   // Routine
@@ -129,9 +159,10 @@ export const supabaseService = {
   },
 
   async saveStudyRoutine(routine: StudyRoutine) {
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
       .from('routine')
-      .upsert({ ...routine, id: 'user_routine' });
+      .upsert({ ...routine, id: 'user_routine', user_id: user?.id });
     if (error) console.error('Erro ao salvar rotina:', error);
   },
 

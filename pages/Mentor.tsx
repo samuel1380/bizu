@@ -135,7 +135,7 @@ const Mentor: React.FC = () => {
         </div>
         <button 
             onClick={handleClearChat} 
-            className="p-2 text-slate-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
+            className="p-2.5 bg-slate-100 dark:bg-slate-700/50 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-2xl border-b-4 border-slate-200 dark:border-slate-800 transition-all active:border-b-0 active:translate-y-1"
             title="Limpar conversa"
         >
             <Trash2 size={24} strokeWidth={2.5} />

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
 import { generateStudyMaterials, generateMaterialContent, createCustomMaterial } from '../services/gemini';
-import { getAllMaterials, saveMaterialsBatch, saveMaterial } from '../services/db';
-import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download, PlusCircle } from 'lucide-react';
+import { getAllMaterials, saveMaterialsBatch, saveMaterial, clearAllMaterials } from '../services/db';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download, PlusCircle, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -71,6 +71,19 @@ const Materials: React.FC = () => {
       console.error("Error generating more materials", error);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (materials.length === 0) return;
+    if (window.confirm("Apagar todas as apostilas e resumos? Esta ação não pode ser desfeita.")) {
+      try {
+        await clearAllMaterials();
+        setMaterials([]);
+      } catch (error) {
+        console.error("Erro ao apagar materiais:", error);
+        alert("Falha ao apagar materiais.");
+      }
     }
   };
 
@@ -304,9 +317,20 @@ const Materials: React.FC = () => {
       {/* Esconde a interface principal na hora de imprimir, mostrando apenas o modal */}
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-700 dark:text-slate-100">Apostilas & Resumos</h1>
-          <p className="text-slate-400 dark:text-slate-500 font-bold">PDFs e Artigos gerados via IA.</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-700 dark:text-slate-100">Apostilas & Resumos</h1>
+            <p className="text-slate-400 dark:text-slate-500 font-bold">PDFs e Artigos gerados via IA.</p>
+          </div>
+          {materials.length > 0 && (
+            <button 
+              onClick={handleClearAll}
+              className="p-3 bg-slate-100 dark:bg-slate-800 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-2xl border-b-4 border-slate-200 dark:border-slate-900 transition-all active:border-b-0 active:translate-y-1"
+              title="Apagar tudo"
+            >
+              <Trash2 size={24} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
         
         <div className="flex gap-2">

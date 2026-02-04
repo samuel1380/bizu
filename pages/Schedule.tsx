@@ -166,10 +166,10 @@ const Schedule: React.FC = () => {
                 </div>
                 <button 
                     onClick={handleDelete}
-                    className="p-3 bg-blue-700 dark:bg-blue-800 hover:bg-red-500 dark:hover:bg-red-500 rounded-xl transition-colors text-white"
+                    className="p-3 bg-blue-700/50 dark:bg-slate-900/40 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl border-b-4 border-blue-900/50 dark:border-slate-950 transition-all active:border-b-0 active:translate-y-1"
                     title="Apagar Rotina"
                 >
-                    <Trash2 size={24} />
+                    <Trash2 size={24} strokeWidth={2.5} />
                 </button>
             </div>
         </div>
