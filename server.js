@@ -60,6 +60,14 @@ const OPENROUTER_MODELS = [
   "meta-llama/llama-3.1-8b-instruct:free"
 ];
 
+const GROQ_MODELS = [
+  "llama-3.3-70b-versatile",
+  "deepseek-r1-distill-llama-70b",
+  "mixtral-8x7b-32768",
+  "llama-3.1-8b-instant",
+  "llama-3.2-11b-vision-preview"
+];
+
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -261,8 +269,9 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 function getAI() {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   const openRouterKey = process.env.OPENAI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
   
-  if (!geminiKey && !openRouterKey) {
+  if (!geminiKey && !openRouterKey && !groqKey) {
     throw new Error("API_KEY_MISSING");
   }
   
@@ -273,8 +282,63 @@ function getAI() {
       baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
       model: process.env.AI_MODEL || 'qwen/qwen3-next-80b-a3b-instruct:free'
     } : null,
-    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (geminiKey ? 'gemini' : 'openrouter')
+    groq: groqKey ? {
+      apiKey: groqKey,
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'llama-3.3-70b-versatile'
+    } : null,
+    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (groqKey ? 'groq' : (openRouterKey ? 'openrouter' : 'gemini'))
   };
+}
+
+// --- CHAMADA GROQ ---
+async function callGroq(config, prompt, isJson = false, history = null, specificModel = null) {
+  const headers = {
+    "Authorization": `Bearer ${config.apiKey.trim()}`,
+    "Content-Type": "application/json"
+  };
+
+  const messages = history ? [...history] : [];
+  if (prompt) {
+    messages.push({ role: "user", content: prompt });
+  }
+
+  const body = {
+    model: specificModel || config.model,
+    messages: [
+      { role: "system", content: BIZU_SYSTEM_PROMPT },
+      ...messages
+    ],
+    response_format: isJson ? { type: "json_object" } : undefined,
+    temperature: 0.7,
+    max_tokens: 4000
+  };
+
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+
+    const rawText = await response.text();
+    
+    if (!response.ok) {
+      let errorMsg = rawText;
+      try {
+        const errorData = JSON.parse(rawText || "{}");
+        errorMsg = errorData.error?.message || rawText;
+      } catch (e) {}
+      
+      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+      throw new Error(errorMsg || `Erro Groq: ${response.status}`);
+    }
+
+    const data = JSON.parse(rawText);
+    return { text: data.choices[0].message.content || "" };
+  } catch (error) {
+    throw error;
+  }
 }
 
 // --- CHAMADA OPENROUTER (FALLBACK) ---
@@ -343,11 +407,113 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 
 // --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
 async function runWithModelFallback(ai, actionName, payload) {
-  const providersToTry = ai.preferredProvider === 'gemini' 
-    ? ['gemini', 'openrouter'] 
-    : ['openrouter', 'gemini'];
+  const providersToTry = ai.preferredProvider === 'groq'
+    ? ['groq', 'openrouter', 'gemini']
+    : (ai.preferredProvider === 'openrouter' ? ['openrouter', 'groq', 'gemini'] : ['gemini', 'groq', 'openrouter']);
 
   for (const provider of providersToTry) {
+    // --- TENTANDO GROQ ---
+    if (provider === 'groq' && ai.groq) {
+      for (const model of GROQ_MODELS) {
+        try {
+          console.log(`[Groq] Tentando ${actionName} com ${model}`);
+          
+          let prompt = "";
+          let isJson = false;
+          let history = null;
+
+          if (actionName === 'generateQuiz') {
+            const batchSize = 10;
+            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+            let allQuestions = [];
+            const numBatches = Math.ceil(totalQuestions / batchSize);
+
+            for (let i = 0; i < numBatches; i++) {
+              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+              if (currentBatchSize <= 0) break;
+
+              const batchPrompt = `Você é um Professor e Gerador de Questões do Bizu. 
+              Gere ${currentBatchSize} questões sobre "${payload.topic}" (${payload.difficulty}). 
+              ESTE É O LOTE ${i + 1} DE ${numBatches}.
+              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+              
+              const res = await callGroq(ai.groq, batchPrompt, true, null, model);
+              const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+              allQuestions = [...allQuestions, ...batchQuestions];
+            }
+            return allQuestions;
+          } else if (actionName === 'askTutor') {
+            history = (payload.history || []).map(m => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.parts[0].text
+            }));
+            prompt = payload.message;
+          } else if (actionName === 'generateMaterials') {
+            prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
+            Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
+            JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo do que será abordado"}]`;
+            isJson = true;
+          } else if (actionName === 'generateMaterialContent') {
+            prompt = `Você é um Professor de Cursinho Preparatório.
+            Gere uma APOSTILA ou RESUMO DE ESTUDO completo em Markdown para o tema: "${payload.material.title}".
+            
+            ESTRUTURA OBRIGATÓRIA:
+            1. Título Chamativo (H1)
+            2. Introdução ao Tema
+            3. Tópicos Detalhados (H2 e H3)
+            4. Dicas de Ouro para Concursos (Destaque)
+            5. Resumo Final (Bullet points)
+            6. Referências ou Base Legal (se houver)
+            
+            Use Markdown rico: negrito, tabelas, listas e blocos de citação. Foque em clareza e organização para impressão.`;
+          } else if (actionName === 'generateRoutine') {
+            prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
+            Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${payload.targetExam}".
+            Disponibilidade: ${payload.hours} horas por dia.
+            Matérias prioritárias: ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
+            
+            Schema JSON: {
+              "title": "Nome do Plano",
+              "description": "Resumo da estratégia",
+              "weekSchedule": [
+                {
+                  "day": "Segunda-feira",
+                  "focus": "Foco do dia",
+                  "tasks": [{"subject": "Matéria", "duration": "tempo", "activity": "O que fazer"}]
+                }
+              ]
+            }`;
+            isJson = true;
+          } else if (actionName === 'updateRadar') {
+            const today = new Date().toLocaleDateString('pt-BR');
+            const existingTitles = Array.isArray(payload?.existingTitles) ? payload.existingTitles.join(", ") : "Nenhum";
+            prompt = `Você é um Analista de Concursos. Hoje é dia ${today}.
+            Liste 5 concursos IMPORTANTES de 2026 que NÃO estão nesta lista: [${existingTitles}].
+            Se não houver NADA novo de 2026 para adicionar, responda APENAS: {"no_updates": true}.
+            Caso contrário, envie o JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+            isJson = true;
+          } else if (actionName === 'createCustomMaterial') {
+            prompt = `Você é um Especialista em Concursos. Crie um material de estudo estratégico baseado no seguinte tema: "${payload.topic}".
+            JSON Object: {"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Tempo", "summary": "Resumo"}`;
+            isJson = true;
+          }
+
+          const res = await callGroq(ai.groq, prompt, isJson, history, model);
+          if (isJson) {
+            const parsed = JSON.parse(extractJSON(res.text));
+            return actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar' 
+              ? ensureArray(parsed) 
+              : parsed;
+          }
+          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+        } catch (error) {
+          console.warn(`⚠️ Groq ${model} falhou: ${error.message}.`);
+          if (error.message.includes("RATE_LIMIT")) break;
+          continue;
+        }
+      }
+    }
+
     // --- TENTANDO GEMINI ---
     if (provider === 'gemini' && ai.gemini) {
       let modelsToTry = [...MODEL_FALLBACK_LIST];
@@ -512,7 +678,7 @@ async function runWithModelFallback(ai, actionName, payload) {
     }
   }
 
-  throw new Error("Todas as IAs e modelos (Gemini e OpenRouter) atingiram o limite de uso.");
+  throw new Error("Todas as IAs e modelos (Groq, Gemini e OpenRouter) atingiram o limite de uso.");
 }
 
 // --- AÇÕES ---
