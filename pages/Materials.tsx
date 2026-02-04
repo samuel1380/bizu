@@ -62,8 +62,7 @@ const Materials: React.FC = () => {
       for (const m of newMaterials) {
         await saveMaterial(m);
       }
-      // Forçar recarregamento do banco para garantir que temos os IDs corretos e dados persistidos
-      await loadMaterials();
+      setMaterials(prev => [...newMaterials, ...prev]);
     } catch (error) {
       console.error("Error generating more materials", error);
     } finally {
@@ -92,14 +91,11 @@ const Materials: React.FC = () => {
     try {
       const newMaterial = await createCustomMaterial(customTopic);
       await saveMaterial(newMaterial);
-      await loadMaterials(); // Recarregar do banco
+      setMaterials(prev => [newMaterial, ...prev]);
       setCustomTopic('');
       setShowCustomForm(false);
-      
-      // Achar o material recém-salvo para abrir
-      const savedMaterial = await getAllMaterials();
-      const latest = savedMaterial.find(m => m.title === newMaterial.title);
-      if (latest) handleOpenMaterial(latest);
+      // Opcional: abrir o material criado imediatamente
+      handleOpenMaterial(newMaterial);
     } catch (error) {
       console.error("Erro ao criar material personalizado:", error);
       alert("Falha ao criar material. Tente novamente.");
@@ -124,13 +120,8 @@ const Materials: React.FC = () => {
       const content = await generateMaterialContent(selectedMaterial);
       const updatedMaterial = { ...selectedMaterial, content };
       await saveMaterial(updatedMaterial);
-      
-      // Atualizar a lista local para manter sincronizado sem precisar recarregar tudo
       setMaterials(prev => prev.map(m => m.id === updatedMaterial.id ? updatedMaterial : m));
       setSelectedMaterial(updatedMaterial);
-      
-      // Opcional: recarregar do banco para garantir consistência total
-      // await loadMaterials(); 
     } catch (error) {
       console.error("Failed to generate content", error);
     } finally {
