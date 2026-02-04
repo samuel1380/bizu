@@ -74,20 +74,25 @@ export const supabaseService = {
   // Chat
   async saveChatMessage(message: ChatMessage) {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { error } = await supabase
       .from('chat_messages')
       .upsert({
         ...message,
-        user_id: user?.id,
-        timestamp: message.timestamp.toISOString()
+        user_id: user.id,
+        timestamp: typeof message.timestamp === 'string' ? message.timestamp : message.timestamp.toISOString()
       });
     if (error) console.error('Erro ao salvar mensagem de chat:', error);
   },
 
   async getChatHistory(): Promise<ChatMessage[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     const { data, error } = await supabase
       .from('chat_messages')
       .select('*')
+      .eq('user_id', user.id)
       .order('timestamp', { ascending: true });
     
     if (error) {
@@ -112,9 +117,13 @@ export const supabaseService = {
 
   // Materials
   async getAllMaterials(): Promise<StudyMaterial[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     const { data, error } = await supabase
       .from('materials')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (error) {
       console.error('Erro ao buscar materiais:', error);
@@ -125,11 +134,12 @@ export const supabaseService = {
 
   async saveMaterial(material: StudyMaterial) {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { error } = await supabase
       .from('materials')
       .upsert({
         ...material,
-        user_id: user?.id
+        user_id: user.id
       });
     if (error) console.error('Erro ao salvar material:', error);
   },
@@ -146,9 +156,13 @@ export const supabaseService = {
 
   // Routine
   async getStudyRoutine(): Promise<StudyRoutine | undefined> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return undefined;
+
     const { data, error } = await supabase
       .from('routine')
       .select('*')
+      .eq('user_id', user.id)
       .eq('id', 'user_routine')
       .single();
     
@@ -160,16 +174,20 @@ export const supabaseService = {
 
   async saveStudyRoutine(routine: StudyRoutine) {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { error } = await supabase
       .from('routine')
-      .upsert({ ...routine, id: 'user_routine', user_id: user?.id });
+      .upsert({ ...routine, id: 'user_routine', user_id: user.id });
     if (error) console.error('Erro ao salvar rotina:', error);
   },
 
   async deleteStudyRoutine() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { error } = await supabase
       .from('routine')
       .delete()
+      .eq('user_id', user.id)
       .eq('id', 'user_routine');
     if (error) console.error('Erro ao deletar rotina:', error);
   }

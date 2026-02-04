@@ -46,14 +46,7 @@ const Materials: React.FC = () => {
     setLoading(true);
     try {
       let storedMaterials = await getAllMaterials();
-      if (storedMaterials.length === 0) {
-        setGenerating(true);
-        const newMaterials = await generateStudyMaterials(4);
-        await saveMaterialsBatch(newMaterials);
-        storedMaterials = newMaterials;
-        setGenerating(false);
-      }
-      setMaterials(storedMaterials.reverse());
+      setMaterials(storedMaterials);
     } catch (error) {
       console.error("Failed to load materials", error);
     } finally {
