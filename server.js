@@ -48,26 +48,16 @@ app.use(express.static(join(__dirname, 'dist')));
 
 // --- LISTA UNIVERSAL DE MODELOS ---
 // A ordem aqui define a prioridade.
-// 1. gemini-1.5-flash: Maior limite gratuito, extremamente rápido e estável.
-// 2. gemini-2.0-flash: Ótimo balanço entre inteligência e velocidade.
-// 3. gemini-1.5-pro: Mais inteligente, porém mais lento e com limite menor.
-// 4. gemini-3-flash-preview: Experimental (limites baixos, usar com cautela).
 const MODEL_FALLBACK_LIST = [
   "gemini-1.5-flash",       
-  "gemini-2.0-flash",       
-  "gemini-1.5-pro",         
-  "gemini-3-flash-preview", 
-  "gemini-1.5-flash-8b"     
+  "gemini-2.0-flash"
 ];
 
 const OPENROUTER_MODELS = [
-  "openai/gpt-oss-120b:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "google/gemini-2.0-pro-exp-02-05:free",
-  "google/gemini-2.0-flash-exp:free",
-  "mistralai/pixtral-12b:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
   "qwen/qwen-2-7b-instruct:free",
-  "microsoft/phi-3-medium-128k-instruct:free"
+  "google/gemini-2.0-flash-exp:free",
+  "meta-llama/llama-3.3-70b-instruct:free"
 ];
 
 const SAFETY_SETTINGS = [
@@ -281,7 +271,7 @@ function getAI() {
     openRouter: openRouterKey ? {
       apiKey: openRouterKey,
       baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
-      model: process.env.AI_MODEL || 'google/gemini-2.0-flash-exp:free'
+      model: process.env.AI_MODEL || 'qwen/qwen3-next-80b-a3b-instruct:free'
     } : null,
     preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (geminiKey ? 'gemini' : 'openrouter')
   };
@@ -373,7 +363,7 @@ async function runWithModelFallback(ai, actionName, payload) {
           if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
           if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
           if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
-          if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model);
+          if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
         } catch (error) {
           if (error.message.includes("429") || error.message.includes("Quota")) {
             console.warn(`⚠️ Gemini ${model} limitado. Tentando próximo modelo Gemini...`);
