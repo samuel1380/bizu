@@ -56,7 +56,7 @@ app.use(express.static(join(__dirname, 'dist')));
 // --- LISTA UNIVERSAL DE MODELOS ---
 // A ordem aqui define a prioridade.
 const MODEL_FALLBACK_LIST = [
-  "gemini-1.5-flash",       
+  "gemini-1.5-flash",
   "gemini-2.0-flash"
 ];
 
@@ -68,8 +68,10 @@ const OPENROUTER_MODELS = [
 ];
 
 const GROQ_MODELS = [
-  "groq/compound-mini",
-  "groq/compound"
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "mixtral-8x7b-32768",
+  "gemma2-9b-it"
 ];
 
 const SAFETY_SETTINGS = [
@@ -289,7 +291,7 @@ function getAI() {
     groq: groqKey ? {
       apiKey: groqKey,
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'groq/compound-mini'
+      model: 'llama-3.3-70b-versatile'
     } : null,
     preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (groqKey ? 'groq' : (openRouterKey ? 'openrouter' : 'gemini'))
   };
@@ -412,12 +414,13 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 // --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
 async function runWithModelFallback(ai, actionName, payload) {
   // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
-  // Se a Groq estiver disponível, usaremos APENAS ela conforme solicitado pelo usuário.
-  let providersToTry = [];
-  if (ai.groq) {
-    providersToTry = ['groq']; // Apenas Groq se estiver configurada
-  } else {
-    providersToTry = ai.preferredProvider === 'openrouter' ? ['openrouter', 'gemini'] : ['gemini', 'openrouter'];
+  // Prioridade 1: Gemini (Pelo limite massivo de tokens e estabilidade)
+  // Prioridade 2: Groq (Pela velocidade quando houver limite disponível)
+  let providersToTry = ['gemini', 'groq'];
+  
+  // Se Groq falhar ou bater limite, ele vai direto para o Gemini
+  if (ai.preferredProvider === 'openrouter') {
+    providersToTry.push('openrouter');
   }
 
   for (const provider of providersToTry) {
@@ -573,7 +576,8 @@ async function runWithModelFallback(ai, actionName, payload) {
           return actionName === 'generateMaterialContent' ? { content: res.text } : res;
         } catch (error) {
           console.warn(`⚠️ Groq ${model} falhou: ${error.message}.`);
-          if (error.message.includes("RATE_LIMIT")) break;
+          // Se for erro de limite ou erro técnico de modelo, tentamos o próximo modelo da Groq.
+          // Mas se o erro persistir, o loop do provider passará para o Gemini.
           continue;
         }
       }
