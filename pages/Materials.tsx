@@ -58,7 +58,10 @@ const Materials: React.FC = () => {
     setGenerating(true);
     try {
       const newMaterials = await generateStudyMaterials(3);
-      await saveMaterialsBatch(newMaterials);
+      // Salvar cada material individualmente no Supabase (que já tem o user_id)
+      for (const m of newMaterials) {
+        await saveMaterial(m);
+      }
       setMaterials(prev => [...newMaterials, ...prev]);
     } catch (error) {
       console.error("Error generating more materials", error);

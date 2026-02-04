@@ -20,7 +20,7 @@ const Mentor: React.FC = () => {
     const loadHistory = async () => {
       try {
         const history = await getChatHistory();
-        if (history.length > 0) {
+        if (history && history.length > 0) {
           setMessages(history);
         } else {
             const welcomeMsg: ChatMessage = {
@@ -30,6 +30,8 @@ const Mentor: React.FC = () => {
                 timestamp: new Date()
             };
             setMessages([welcomeMsg]);
+            // Salvar a mensagem de boas-vindas no banco para que ela não seja recriada
+            await saveChatMessage(welcomeMsg);
         }
       } catch (e) {
         console.error("Failed to load history", e);
