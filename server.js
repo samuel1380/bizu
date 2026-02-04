@@ -68,12 +68,8 @@ const OPENROUTER_MODELS = [
 ];
 
 const GROQ_MODELS = [
-  "groq-composto",
-  "groq-composto-mini",
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-  "mixtral-8x7b-32768",
-  "deepseek-r1-distill-llama-70b"
+  "groq/compound-mini",
+  "groq/compound"
 ];
 
 const SAFETY_SETTINGS = [
@@ -293,7 +289,7 @@ function getAI() {
     groq: groqKey ? {
       apiKey: groqKey,
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.3-70b-versatile'
+      model: 'groq/compound-mini'
     } : null,
     preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (groqKey ? 'groq' : (openRouterKey ? 'openrouter' : 'gemini'))
   };
@@ -415,9 +411,14 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 
 // --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
 async function runWithModelFallback(ai, actionName, payload) {
-  const providersToTry = ai.preferredProvider === 'groq'
-    ? ['groq', 'openrouter', 'gemini']
-    : (ai.preferredProvider === 'openrouter' ? ['openrouter', 'groq', 'gemini'] : ['gemini', 'groq', 'openrouter']);
+  // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
+  // Se a Groq estiver disponível, usaremos APENAS ela conforme solicitado pelo usuário.
+  let providersToTry = [];
+  if (ai.groq) {
+    providersToTry = ['groq']; // Apenas Groq se estiver configurada
+  } else {
+    providersToTry = ai.preferredProvider === 'openrouter' ? ['openrouter', 'gemini'] : ['gemini', 'openrouter'];
+  }
 
   for (const provider of providersToTry) {
     // --- TENTANDO GROQ ---
