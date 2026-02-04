@@ -485,6 +485,11 @@ async function runWithModelFallback(ai, actionName, payload) {
     providersToTry = [ai.preferredProvider, ...providersToTry.filter(p => p !== ai.preferredProvider)];
   }
 
+  // Se a ação for relacionada a materiais, coloca o Mistral como prioridade máxima
+  if (actionName === 'generateMaterials' || actionName === 'generateMaterialContent' || actionName === 'createCustomMaterial' || actionName === 'generateStudyMaterials') {
+    providersToTry = ['mistral', 'gemini', 'groq', 'openrouter'];
+  }
+
   for (const provider of providersToTry) {
     try {
       // --- TENTANDO GEMINI ---
