@@ -479,430 +479,373 @@ async function runWithModelFallback(ai, actionName, payload) {
   // Prioridade 1: Gemini (Pelo limite massivo de tokens e estabilidade)
   // Prioridade 2: Mistral (Reforço de 1 Bilhão de tokens)
   // Prioridade 3: Groq (Pela velocidade quando houver limite disponível)
-  let providersToTry = ['gemini', 'mistral', 'groq'];
+  let providersToTry = ['gemini', 'mistral', 'groq', 'openrouter'];
   
-  // Se Groq falhar ou bater limite, ele vai direto para o Gemini
-  if (ai.preferredProvider === 'openrouter') {
-    providersToTry.push('openrouter');
+  if (ai.preferredProvider && providersToTry.includes(ai.preferredProvider)) {
+    providersToTry = [ai.preferredProvider, ...providersToTry.filter(p => p !== ai.preferredProvider)];
   }
 
   for (const provider of providersToTry) {
-    // --- TENTANDO MISTRAL ---
-    if (provider === 'mistral' && ai.mistral) {
-      for (const model of MISTRAL_MODELS) {
-        try {
-          console.log(`[Mistral] Tentando ${actionName} com ${model}`);
-          
-          let prompt = "";
-          let isJson = false;
-          let history = null;
+    try {
+      // --- TENTANDO GEMINI ---
+      if (provider === 'gemini' && ai.gemini) {
+        let modelsToTry = [...MODEL_FALLBACK_LIST];
+        if (process.env.AI_MODEL && !process.env.AI_MODEL.includes("/")) {
+          modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
+        }
 
-          if (actionName === 'generateStudyMaterials') {
-            const topic = payload.topic || 'Concursos Públicos';
-            const count = payload.count || 3;
-            let allMaterials = [];
-
-            for (let i = 0; i < count; i++) {
-              const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
-              Responda APENAS JSON: { "title": "...", "intro": "..." }`;
+        for (const model of modelsToTry) {
+          try {
+            console.log(`[Gemini] Tentando ${actionName} com ${model}`);
+            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
+            if (actionName === 'askTutor') return await handleAskTutor(ai.gemini, model, payload);
+            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
+            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
+            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
+            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
+          } catch (error) {
+            if (error.message.includes("429") || error.message.includes("Quota") || error.message.includes("exhausted")) {
+              console.warn(`⚠️ Gemini ${model} atingiu limite. Aguardando 60 segundos para resetar...`);
+              await sleep(60000);
               
-              const skeletonRes = await callMistral(ai.mistral, skeletonPrompt, true, null, model);
-              const skeleton = JSON.parse(extractJSON(skeletonRes.text));
-
-              let fullContent = skeleton.intro + "\n\n";
-              const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
-
-              for (const part of parts) {
-                const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
-                FOCO: Máxima profundidade e Markdown rico.
-                Retorne apenas o texto em Markdown.`;
-                
-                const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
-                fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
-                await sleep(1000);
-              }
-
-              allMaterials.push({
-                id: Date.now() + i,
-                title: skeleton.title,
-                content: fullContent,
-                category: topic,
-                timestamp: new Date()
-              });
-            }
-            return allMaterials;
-          } else if (actionName === 'generateQuiz') {
-            const batchSize = 5;
-            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
-            let allQuestions = [];
-            const numBatches = Math.ceil(totalQuestions / batchSize);
-
-            for (let i = 0; i < numBatches; i++) {
-              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
-              const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}".
-              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-              
-              let success = false;
-              let retryCount = 0;
-              while (!success && retryCount < 3) {
-                try {
-                  const res = await callMistral(ai.mistral, batchPrompt, true, null, model);
-                  const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-                  allQuestions = [...allQuestions, ...batchQuestions];
-                  success = true;
-                  await sleep(1000);
-                } catch (err) {
-                  retryCount++;
-                  if (err.message.includes("RATE_LIMIT")) await sleep(2000);
-                  else throw err;
-                }
+              try {
+                console.log(`[Gemini] Retentando ${actionName} com ${model} após espera...`);
+                if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
+                if (actionName === 'askTutor') return await handleAskTutor(ai.gemini, model, payload);
+                if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
+                if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
+                if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
+                if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
+              } catch (retryError) {
+                console.warn(`⚠️ Gemini ${model} falhou novamente após espera: ${retryError.message}.`);
               }
             }
-            return allQuestions;
-          } else if (actionName === 'askTutor') {
-            history = (payload.history || []).map(m => ({
-              role: m.role === 'model' ? 'assistant' : 'user',
-              content: m.parts[0].text
-            }));
-            prompt = payload.message;
-          } else {
-            // Outras ações usam prompt padrão
-            prompt = "Processando ação..."; // Simplificado para brevidade, idealmente replicar lógica do Groq
+            console.warn(`⚠️ Gemini ${model} falhou: ${error.message}.`);
+            continue; 
           }
-
-          const res = await callMistral(ai.mistral, prompt, isJson, history, model);
-          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
-        } catch (error) {
-          console.warn(`⚠️ Mistral ${model} falhou: ${error.message}.`);
-          continue;
         }
       }
-    }
 
-    // --- TENTANDO GROQ ---
-    if (provider === 'groq' && ai.groq) {
-      for (const model of GROQ_MODELS) {
-        try {
-          console.log(`[Groq] Tentando ${actionName} com ${model}`);
-          
-          let prompt = "";
-          let isJson = false;
-          let history = null;
+      // --- TENTANDO MISTRAL ---
+      if (provider === 'mistral' && ai.mistral) {
+        for (const model of MISTRAL_MODELS) {
+          try {
+            console.log(`[Mistral] Tentando ${actionName} com ${model}`);
+            
+            // Verificação de ações específicas que chamam handlers do Gemini
+            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
 
-          if (actionName === 'generateStudyMaterials') {
-            const topic = payload.topic || 'Concursos Públicos';
-            const count = payload.count || 3;
-            let allMaterials = [];
+            let prompt = "";
+            let isJson = false;
+            let history = null;
 
-            for (let i = 0; i < count; i++) {
-              // 1. Primeiro gera o título e o esqueleto da apostila
-              const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
-              A apostila deve ser técnica e detalhada.
-              Responda APENAS JSON: { "title": "...", "intro": "..." }`;
-              
-              const skeletonRes = await callGroq(ai.groq, skeletonPrompt, true, null, model);
-              const skeleton = JSON.parse(extractJSON(skeletonRes.text));
+            if (actionName === 'generateStudyMaterials') {
+              const topic = payload.topic || 'Concursos Públicos';
+              const count = payload.count || 3;
+              let allMaterials = [];
 
-              // 2. Gera o conteúdo denso em 3 partes para garantir tamanho e profundidade
-              let fullContent = skeleton.intro + "\n\n";
-              const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
-
-              for (const part of parts) {
-                const contentPrompt = `Você é o Professor Especialista do Bizu. 
-                Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
-                FOCO: Máxima profundidade, tabelas Markdown, termos técnicos em negrito e exemplos práticos.
-                Não economize nas palavras. Seja denso.
-                Retorne apenas o texto em Markdown.`;
+              for (let i = 0; i < count; i++) {
+                const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
+                Responda APENAS JSON: { "title": "...", "intro": "..." }`;
                 
-                const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
-                fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
-                await sleep(2000); // Pausa para evitar rate limit
+                const skeletonRes = await callMistral(ai.mistral, skeletonPrompt, true, null, model);
+                const skeleton = JSON.parse(extractJSON(skeletonRes.text));
+
+                let fullContent = skeleton.intro + "\n\n";
+                const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+
+                for (const part of parts) {
+                  const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
+                  FOCO: Máxima profundidade e Markdown rico.
+                  Retorne apenas o texto em Markdown.`;
+                  
+                  const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
+                  fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
+                  await sleep(1000);
+                }
+
+                allMaterials.push({
+                  id: Date.now() + i,
+                  title: skeleton.title,
+                  content: fullContent,
+                  category: topic,
+                  timestamp: new Date()
+                });
               }
+              return allMaterials;
+            } else if (actionName === 'generateQuiz') {
+              const batchSize = 5;
+              const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+              let allQuestions = [];
+              const numBatches = Math.ceil(totalQuestions / batchSize);
 
-              allMaterials.push({
-                id: Date.now() + i,
-                title: skeleton.title,
-                content: fullContent,
-                category: topic,
-                timestamp: new Date()
-              });
-            }
-            return allMaterials;
-          } else if (actionName === 'generateQuiz') {
-            const batchSize = 5; // Reduzido para 5 para ser mais seguro com o limite de tokens da Groq
-            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
-            let allQuestions = [];
-            const numBatches = Math.ceil(totalQuestions / batchSize);
-
-            for (let i = 0; i < numBatches; i++) {
-              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
-              if (currentBatchSize <= 0) break;
-
-              const batchPrompt = `Você é um Professor e Gerador de Questões do Bizu. 
-              Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}". 
-              ESTE É O LOTE ${i + 1} DE ${numBatches}.
-              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-              
-              let success = false;
-              let retryCount = 0;
-              while (!success && retryCount < 3) {
-                try {
-                  const res = await callGroq(ai.groq, batchPrompt, true, null, model);
-                  const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-                  allQuestions = [...allQuestions, ...batchQuestions];
-                  success = true;
-                  // Pequena pausa entre lotes para evitar Rate Limit
-                  if (numBatches > 1) await sleep(2000);
-                } catch (err) {
-                  retryCount++;
-                  if (err.message.includes("RATE_LIMIT") || err.message.includes("429")) {
-                    console.log(`[Groq] Rate limit atingido no lote ${i+1}. Esperando 10 segundos...`);
-                    await sleep(10000); // Espera 10 segundos antes de tentar novamente
-                  } else {
-                    throw err;
+              for (let i = 0; i < numBatches; i++) {
+                const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+                const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}".
+                Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+                
+                let success = false;
+                let retryCount = 0;
+                while (!success && retryCount < 3) {
+                  try {
+                    const res = await callMistral(ai.mistral, batchPrompt, true, null, model);
+                    const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                    allQuestions = [...allQuestions, ...batchQuestions];
+                    success = true;
+                    await sleep(1000);
+                  } catch (err) {
+                    retryCount++;
+                    if (err.message.includes("RATE_LIMIT")) await sleep(2000);
+                    else throw err;
                   }
                 }
               }
+              return allQuestions;
+            } else if (actionName === 'askTutor') {
+              history = (payload.history || []).map(m => ({
+                role: m.role === 'model' ? 'assistant' : 'user',
+                content: m.parts[0].text
+              }));
+              prompt = payload.message;
+            } else if (actionName === 'generateMaterials') {
+              prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
+              JSON Array: [{"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo"}]`;
+              isJson = true;
+            } else if (actionName === 'generateMaterialContent') {
+              prompt = `Gere uma APOSTILA completa em Markdown para o tema: "${payload.material.title}".`;
+            } else if (actionName === 'generateRoutine') {
+              prompt = `Crie um CRONOGRAMA DE ESTUDO semanal para: "${payload.targetExam}". Hours: ${payload.hours}. Subjects: ${payload.subjects}.
+              Schema JSON: { "title": "...", "description": "...", "weekSchedule": [{ "day": "...", "tasks": [{"subject": "...", "duration": "...", "activity": "..."}] }] }`;
+              isJson = true;
+            } else {
+              prompt = "Processando ação..."; 
             }
-            return allQuestions;
-          } else if (actionName === 'askTutor') {
-            history = (payload.history || []).map(m => ({
-              role: m.role === 'model' ? 'assistant' : 'user',
-              content: m.parts[0].text
-            }));
-            prompt = payload.message;
-          } else if (actionName === 'generateMaterials') {
-            prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
-            Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
-            JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo do que será abordado"}]`;
-            isJson = true;
-          } else if (actionName === 'generateMaterialContent') {
-            prompt = `Você é um Professor de Cursinho Preparatório.
-            Gere uma APOSTILA ou RESUMO DE ESTUDO completo em Markdown para o tema: "${payload.material.title}".
-            
-            ESTRUTURA OBRIGATÓRIA:
-            1. Título Chamativo (H1)
-            2. Introdução ao Tema
-            3. Tópicos Detalhados (H2 e H3)
-            4. Dicas de Ouro para Concursos (Destaque)
-            5. Resumo Final (Bullet points)
-            6. Referências ou Base Legal (se houver)
-            
-            Use Markdown rico: negrito, tabelas, listas e blocos de citação. Foque em clareza e organização para impressão.`;
-          } else if (actionName === 'generateRoutine') {
-            prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
-            Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${payload.targetExam}".
-            Disponibilidade: ${payload.hours} horas por dia.
-            Matérias prioritárias: ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
-            
-            Schema JSON: {
-              "title": "Nome do Plano",
-              "description": "Resumo da estratégia",
-              "weekSchedule": [
-                {
-                  "day": "Segunda-feira",
-                  "focus": "Foco do dia",
-                  "tasks": [{"subject": "Matéria", "duration": "tempo", "activity": "O que fazer"}]
-                }
-              ]
-            }`;
-            isJson = true;
-          } else if (actionName === 'updateRadar') {
-            const today = new Date().toLocaleDateString('pt-BR');
-            const existingTitles = Array.isArray(payload?.existingTitles) ? payload.existingTitles.join(", ") : "Nenhum";
-            prompt = `Você é um Analista de Concursos. Hoje é dia ${today}.
-            Liste 5 concursos IMPORTANTES de 2026 que NÃO estão nesta lista: [${existingTitles}].
-            Se não houver NADA novo de 2026 para adicionar, responda APENAS: {"no_updates": true}.
-            Caso contrário, envie o JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
-            isJson = true;
-          } else if (actionName === 'createCustomMaterial') {
-            prompt = `Você é um Especialista em Concursos. Crie um material de estudo estratégico baseado no seguinte tema: "${payload.topic}".
-            JSON Object: {"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Tempo", "summary": "Resumo"}`;
-            isJson = true;
-          }
 
-          const res = await callGroq(ai.groq, prompt, isJson, history, model);
-          if (isJson) {
-            const parsed = JSON.parse(extractJSON(res.text));
-            return actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar' 
-              ? ensureArray(parsed) 
-              : parsed;
-          }
-          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
-        } catch (error) {
-          console.warn(`⚠️ Groq ${model} falhou: ${error.message}.`);
-          // Se for erro de limite ou erro técnico de modelo, tentamos o próximo modelo da Groq.
-          // Mas se o erro persistir, o loop do provider passará para o Gemini.
-          continue;
-        }
-      }
-    }
-
-    // --- TENTANDO GEMINI ---
-    if (provider === 'gemini' && ai.gemini) {
-      let modelsToTry = [...MODEL_FALLBACK_LIST];
-      if (process.env.AI_MODEL && !process.env.AI_MODEL.includes("/")) {
-        modelsToTry = [process.env.AI_MODEL, ...modelsToTry.filter(m => m !== process.env.AI_MODEL)];
-      }
-
-      for (const model of modelsToTry) {
-        try {
-          console.log(`[Gemini] Tentando ${actionName} com ${model}`);
-          if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
-          if (actionName === 'askTutor') return await handleAskTutor(ai.gemini, model, payload);
-          if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
-          if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
-          if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
-          if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
-        } catch (error) {
-          if (error.message.includes("429") || error.message.includes("Quota")) {
-            console.warn(`⚠️ Gemini ${model} limitado. Tentando próximo modelo Gemini...`);
+            const res = await callMistral(ai.mistral, prompt, isJson, history, model);
+            if (isJson) {
+              const parsed = JSON.parse(extractJSON(res.text));
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+                ? ensureArray(parsed) : parsed;
+            }
+            return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+          } catch (error) {
+            console.warn(`⚠️ Mistral ${model} falhou: ${error.message}.`);
             continue;
           }
-          console.error(`❌ Erro no Gemini (${model}):`, error.message);
-          break; // Sai do loop de modelos Gemini e tenta o próximo provedor
         }
       }
-    }
 
-    // --- TENTANDO OPENROUTER ---
-    if (provider === 'openrouter' && ai.openRouter) {
-      let models = [ai.openRouter.model, ...OPENROUTER_MODELS.filter(m => m !== ai.openRouter.model)];
-      let attempts = 0;
-      const MAX_ATTEMPTS = 2; // Limita a apenas 2 modelos para evitar demora excessiva
-
-      for (const model of models) {
-        if (attempts >= MAX_ATTEMPTS) break;
-        attempts++;
-
-        try {
-          console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
-          
-          let prompt = "";
-          let isJson = false;
-          let history = null;
-
-          if (actionName === 'generateQuiz') {
-            const batchSize = 10;
-            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
-            let allQuestions = [];
-            const numBatches = Math.ceil(totalQuestions / batchSize);
-
-            for (let i = 0; i < numBatches; i++) {
-              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
-              if (currentBatchSize <= 0) break;
-
-              const batchPrompt = `Você é um Professor e Gerador de Questões do Bizu. 
-              Gere ${currentBatchSize} questões sobre "${payload.topic}" (${payload.difficulty}). 
-              ESTE É O LOTE ${i + 1} DE ${numBatches}.
-              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-              
-              const res = await callOpenRouter(ai.openRouter, batchPrompt, true, null, model);
-              const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-              allQuestions = [...allQuestions, ...batchQuestions];
-            }
-            return allQuestions;
-          } else if (actionName === 'askTutor') {
-            history = (payload.history || []).map(m => ({
-              role: m.role === 'model' ? 'assistant' : 'user',
-              content: m.parts[0].text
-            }));
-            prompt = payload.message;
-          } else if (actionName === 'generateMaterials') {
-            prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
-            Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
-            JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Breve resumo do que será abordado"}]`;
-            isJson = true;
-          } else if (actionName === 'generateMaterialContent') {
-            prompt = `Você é um Professor de Cursinho Preparatório.
-            Gere uma APOSTILA ou RESUMO DE ESTUDO completo em Markdown para o tema: "${payload.material.title}".
+      // --- TENTANDO GROQ ---
+      if (provider === 'groq' && ai.groq) {
+        for (const model of GROQ_MODELS) {
+          try {
+            console.log(`[Groq] Tentando ${actionName} com ${model}`);
             
-            ESTRUTURA OBRIGATÓRIA:
-            1. Título Chamativo (H1)
-            2. Introdução ao Tema
-            3. Tópicos Detalhados (H2 e H3)
-            4. Dicas de Ouro para Concursos (Destaque)
-            5. Resumo Final (Bullet points)
-            6. Referências ou Base Legal (se houver)
-            
-            Use Markdown rico: negrito, tabelas, listas e blocos de citação. Foque em clareza e organização para impressão.`;
-          } else if (actionName === 'generateRoutine') {
-            prompt = `Você é um Mentor de Concursos especialista em Ciclos de Estudo.
-            Crie um CRONOGRAMA DE ESTUDO semanal completo para o concurso: "${payload.targetExam}".
-            Disponibilidade: ${payload.hours} horas por dia.
-            Matérias prioritárias (dar mais tempo e mais recorrência): ${Array.isArray(payload.subjects) ? payload.subjects.join(", ") : payload.subjects}.
-            
-            REGRA DE OURO: a lista acima NÃO é a lista completa do edital. Mesmo que venha só 1 matéria (ex: "Português"), você deve completar com outras matérias essenciais e típicas do concurso/cargo informado em "${payload.targetExam}".
-            Distribua a semana em ciclo, with a(s) matéria(s) prioritária(s) aparecendo(em) mais vezes, sem excluir as demais.
-            MÍNIMO: inclua pelo menos 5 matérias distintas ao longo da semana.
-            
-            REGRAS CRÍTICAS DE TEMPO E PROPORÇÃO:
-            1. QUESTÕES: Cada questão deve levar em média 1.5 a 2 minutos. Ex: Um quiz de 10 questões deve ter duração de 15 a 20 minutos.
-            2. TEORIA: Blocos de teoria devem ter entre 40 a 60 minutos.
-            3. REVISÃO: Blocos de revisão rápida devem ter de 15 a 30 minutos.
-            4. COERÊNCIA: Garanta que a soma das durações das tarefas não ultrapasse a disponibilidade de ${payload.hours}h diárias.
-            
-            Schema JSON: {
-              "title": "Nome do Plano",
-              "description": "Resumo da estratégia",
-              "weekSchedule": [
-                {
-                  "day": "Segunda-feira",
-                  "focus": "Foco do dia",
-                  "tasks": [{"subject": "Matéria", "duration": "tempo", "activity": "O que fazer"}]
+            // Redireciona para os handlers especializados do Gemini em caso de falha ou fallback
+            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
+
+            let prompt = "";
+            let isJson = false;
+            let history = null;
+
+            if (actionName === 'generateStudyMaterials') {
+              const topic = payload.topic || 'Concursos Públicos';
+              const count = payload.count || 3;
+              let allMaterials = [];
+
+              for (let i = 0; i < count; i++) {
+                const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
+                Responda APENAS JSON: { "title": "...", "intro": "..." }`;
+                
+                const skeletonRes = await callGroq(ai.groq, skeletonPrompt, true, null, model);
+                const skeleton = JSON.parse(extractJSON(skeletonRes.text));
+
+                let fullContent = skeleton.intro + "\n\n";
+                const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+
+                for (const part of parts) {
+                  const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
+                  Retorne apenas o texto em Markdown.`;
+                  
+                  const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
+                  fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
+                  await sleep(2000); 
                 }
-              ]
-            }`;
-            isJson = true;
-          } else if (actionName === 'updateRadar') {
-            const today = new Date().toLocaleDateString('pt-BR');
-            const existingTitles = Array.isArray(payload?.existingTitles) ? payload.existingTitles.join(", ") : "Nenhum";
-            prompt = `Você é um Analista de Concursos. Hoje é dia ${today}.
-            Liste 5 concursos IMPORTANTES de 2026 que NÃO estão nesta lista: [${existingTitles}].
-            Se não houver NADA novo de 2026 para adicionar, responda APENAS: {"no_updates": true}.
-            Caso contrário, envie o JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
-            isJson = true;
-          } else if (actionName === 'createCustomMaterial') {
-            prompt = `Você é um Especialista em Concursos. Crie um material de estudo estratégico baseado no seguinte tema: "${payload.topic}".
-            JSON Object: {"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Tempo", "summary": "Resumo"}`;
-            isJson = true;
-          }
 
-          const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
-          if (isJson) {
-            const parsed = JSON.parse(extractJSON(res.text));
-            if (actionName === 'generateRoutine') {
-              const minDistinct = Math.max(5, Math.min(10, parseSubjectList(payload.subjects).length + 3));
-              if (countDistinctRoutineSubjects(parsed) < minDistinct) {
-                throw new Error("ROUTINE_LOW_DIVERSITY");
+                allMaterials.push({
+                  id: Date.now() + i,
+                  title: skeleton.title,
+                  content: fullContent,
+                  category: topic,
+                  timestamp: new Date()
+                });
               }
-            }
-            return actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar' 
-              ? ensureArray(parsed) 
-              : parsed;
-          }
-          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
-        } catch (error) {
-          console.warn(`⚠️ OpenRouter ${model} falhou: ${error.message}.`);
-          
-          // Se for limite de taxa, não adianta tentar outros modelos free no mesmo provedor
-          if (error.message.includes("RATE_LIMIT")) {
-            console.warn("🛑 Limite de taxa atingido no OpenRouter. Pulando para o próximo provedor...");
-            break; 
-          }
+              return allMaterials;
+            } else if (actionName === 'generateQuiz') {
+              const batchSize = 5; 
+              const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+              let allQuestions = [];
+              const numBatches = Math.ceil(totalQuestions / batchSize);
 
-          // Se o modelo não existe, pula para o próximo
-          if (error.message.includes("No endpoints found")) {
+              for (let i = 0; i < numBatches; i++) {
+                const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+                if (currentBatchSize <= 0) break;
+
+                const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}". 
+                Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+                
+                let success = false;
+                let retryCount = 0;
+                while (!success && retryCount < 3) {
+                  try {
+                    const res = await callGroq(ai.groq, batchPrompt, true, null, model);
+                    const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                    allQuestions = [...allQuestions, ...batchQuestions];
+                    success = true;
+                    if (numBatches > 1) await sleep(2000);
+                  } catch (err) {
+                    retryCount++;
+                    if (err.message.includes("RATE_LIMIT") || err.message.includes("429")) {
+                      console.log(`[Groq] Rate limit atingido. Esperando 5 segundos...`);
+                      await sleep(5000);
+                    } else {
+                      throw err;
+                    }
+                  }
+                }
+              }
+              return allQuestions;
+            } else if (actionName === 'askTutor') {
+              history = (payload.history || []).map(m => ({
+                role: m.role === 'model' ? 'assistant' : 'user',
+                content: m.parts[0].text
+              }));
+              prompt = payload.message;
+            } else if (actionName === 'generateMaterials') {
+              prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais.
+              JSON Array: [{"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Resumo"}]`;
+              isJson = true;
+            } else if (actionName === 'generateMaterialContent') {
+              prompt = `Gere uma APOSTILA completa em Markdown para o tema: "${payload.material.title}".`;
+            } else if (actionName === 'generateRoutine') {
+              prompt = `Crie um CRONOGRAMA DE ESTUDO semanal para: "${payload.targetExam}".
+              Schema JSON: { "title": "...", "description": "...", "weekSchedule": [{ "day": "...", "tasks": [{"subject": "...", "duration": "...", "activity": "..."}] }] }`;
+              isJson = true;
+            } else if (actionName === 'updateRadar') {
+              prompt = `Liste 5 concursos IMPORTANTES de 2026.
+              JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+              isJson = true;
+            }
+
+            const res = await callGroq(ai.groq, prompt, isJson, history, model);
+            if (isJson) {
+              const parsed = JSON.parse(extractJSON(res.text));
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+                ? ensureArray(parsed) : parsed;
+            }
+            return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+          } catch (error) {
+            console.warn(`⚠️ Groq ${model} falhou: ${error.message}.`);
             continue;
           }
-
-          continue;
         }
       }
+
+
+
+      // --- TENTANDO OPENROUTER ---
+      if (provider === 'openrouter' && ai.openRouter) {
+        let models = [ai.openRouter.model, ...OPENROUTER_MODELS.filter(m => m !== ai.openRouter.model)];
+        for (const model of models) {
+          try {
+            console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
+            
+            // Redireciona para os handlers especializados do Gemini para garantir consistência
+            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
+            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
+
+            let prompt = "";
+            let isJson = false;
+            let history = null;
+
+            if (actionName === 'generateQuiz') {
+              const batchSize = 10;
+              const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+              let allQuestions = [];
+              const numBatches = Math.ceil(totalQuestions / batchSize);
+
+              for (let i = 0; i < numBatches; i++) {
+                const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+                if (currentBatchSize <= 0) break;
+
+                const batchPrompt = `Gere ${currentBatchSize} questões sobre "${payload.topic}" (${payload.difficulty}). 
+                Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+                
+                const res = await callOpenRouter(ai.openRouter, batchPrompt, true, null, model);
+                const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                allQuestions = [...allQuestions, ...batchQuestions];
+              }
+              return allQuestions;
+            } else if (actionName === 'askTutor') {
+              history = (payload.history || []).map(m => ({
+                role: m.role === 'model' ? 'assistant' : 'user',
+                content: m.parts[0].text
+              }));
+              prompt = payload.message;
+            } else if (actionName === 'generateMaterials') {
+              prompt = `Liste ${payload.count} materiais.
+              JSON Array: [{"title": "Título", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas", "summary": "Resumo"}]`;
+              isJson = true;
+            } else if (actionName === 'generateMaterialContent') {
+              prompt = `Gere uma APOSTILA completa em Markdown para o tema: "${payload.material.title}".`;
+            } else if (actionName === 'generateRoutine') {
+              prompt = `Crie um CRONOGRAMA DE ESTUDO semanal para: "${payload.targetExam}".
+              Schema JSON: { "title": "...", "description": "...", "weekSchedule": [{ "day": "...", "tasks": [{"subject": "...", "duration": "...", "activity": "..."}] }] }`;
+              isJson = true;
+            } else if (actionName === 'updateRadar') {
+              prompt = `Liste 5 concursos IMPORTANTES de 2026.
+              JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+              isJson = true;
+            }
+
+            const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
+            if (isJson) {
+              const parsed = JSON.parse(extractJSON(res.text));
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+                ? ensureArray(parsed) : parsed;
+            }
+            return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+          } catch (error) {
+            console.warn(`⚠️ OpenRouter ${model} falhou: ${error.message}.`);
+            continue;
+          }
+        }
+      }
+    } catch (providerError) {
+      console.error(`🚨 Falha crítica no provedor ${provider}:`, providerError.message);
+      continue; // Próximo provedor se este falhar miseravelmente
     }
   }
 
-  throw new Error("Todas as IAs e modelos (Groq, Gemini e OpenRouter) atingiram o limite de uso.");
+  throw new Error("Todas as IAs e modelos (Gemini, Mistral, Groq e OpenRouter) atingiram o limite de uso.");
+}
 }
 
 // --- AÇÕES ---
@@ -938,15 +881,30 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
     Responda APENAS o JSON Array.
     Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "..."}]`;
     
-    try {
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const batchQuestions = ensureArray(JSON.parse(extractJSON(text)));
-      allQuestions = [...allQuestions, ...batchQuestions];
-    } catch (err) {
-      console.error(`Erro no lote ${i + 1}:`, err);
-      if (allQuestions.length > 0) break; // Se já tiver algumas questões, retorna o que tem
-      throw err;
+    let success = false;
+    while (!success) {
+      try {
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const batchQuestions = ensureArray(JSON.parse(extractJSON(text)));
+        allQuestions = [...allQuestions, ...batchQuestions];
+        success = true; // Lote concluído com sucesso
+      } catch (err) {
+        // Se for erro de limite (429), espera 60s e tenta o MESMO lote novamente
+        if (err.message.includes("429") || err.message.includes("Quota") || err.message.includes("exhausted")) {
+          console.warn(`⚠️ Limite atingido no lote ${i + 1}. Aguardando 60s para tentar novamente este mesmo lote...`);
+          await sleep(60000);
+          // O loop 'while(!success)' fará a retentativa automática
+        } else {
+          // Para outros erros (segurança, sintaxe, etc), loga e tenta avançar ou falhar
+          console.error(`Erro crítico no lote ${i + 1}:`, err.message);
+          if (allQuestions.length > 0) {
+            success = true; // Força saída deste lote para retornar o que já temos
+            break; 
+          }
+          throw err;
+        }
+      }
     }
   }
 
@@ -988,33 +946,60 @@ async function handleGenerateMaterialContent(genAI, modelName, { material }) {
     model: modelName, 
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: {
-      temperature: 0.4, // Menor temperatura para maior precisão técnica
-      maxOutputTokens: 4000, // Garante que o material seja longo e completo
+      temperature: 0.4,
+      maxOutputTokens: 4000,
     },
     safetySettings: SAFETY_SETTINGS 
   });
-  const prompt = `Você é um Professor e Autor de Materiais Didáticos de Alto Nível para Concursos de Elite.
-  Sua missão é produzir uma APOSTILA ACADÊMICA, EXAUSTIVA e PROFISSIONAL sobre: "${material.title}".
+
+  const sections = [
+    { name: "Título e Introdução", items: ["# Título Estratégico", "## 1. Introdução e Importância para Provas"] },
+    { name: "Desenvolvimento Teórico", items: ["## 2. Desenvolvimento Teórico Aprofundado (Mínimo de 3 sub-tópicos ###)", "## 3. Tabela de Classificação e Exemplos"] },
+    { name: "Diferenciação e Bizus", items: ["## 4. Quadro de Diferenciação", "## 5. Bizus de Prova e Alertas de Pegadinha"] },
+    { name: "Questões e Resumo", items: ["## 6. Questão de Concurso Comentada", "## 7. Resumo em Checklist para Revisão Final"] }
+  ];
+
+  let fullContent = "";
   
-  REGRAS TÉCNICAS INEGOCIÁVEIS:
-  1. PRECISÃO TOTAL: Se o tema for Língua Portuguesa, use a Nomenclatura Gramatical Brasileira (NGB). Diferencie rigorosamente Coordenativas de Subordinativas.
-  2. MACETES DE OURO: Para Conjunções Integrantes (que/se), explique o macete de substituir a oração por "ISSO". Para Pronomes Relativos, o macete de substituir por "O QUAL".
-  3. VÍCIOS DE LINGUAGEM: Defina corretamente Pleonasmo Vicioso, Ambiguidade (Anfibologia), Anacoluto, Zeugma e Solecismo com exemplos reais de prova.
-  4. NÃO TRUNCAR: O texto deve ter começo, meio e fim. Se o tema for vasto, priorize a profundidade nos pontos mais cobrados.
-  
-  ESTRUTURA OBRIGATÓRIA:
-  1. # Título Estratégico
-  2. ## 1. Introdução e Importância para Provas (Explique como as bancas cobram)
-  3. ## 2. Desenvolvimento Teórico Aprofundado (Mínimo de 3 sub-tópicos ###)
-  4. ## 3. Tabela de Classificação e Exemplos (Tabela Markdown detalhada)
-  5. ## 4. Quadro de Diferenciação (Ex: "Isso" vs "O Qual", "Mas" vs "Mais", etc)
-  6. ## 5. Bizus de Prova e Alertas de Pegadinha (> Blockquotes com foco em FGV/CESPE)
-  7. ## 6. Questão de Concurso Comentada (Inédita ou de Banca)
-  8. ## 7. Resumo em Checklist para Revisão Final
-  
-  Inicie o texto diretamente no Título (H1). Escreva de forma fluida, sem introduções vazias.`;
-  const result = await model.generateContent(prompt);
-  return { content: result.response.text() };
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    const prompt = `Você é um Professor de Elite. Produza a PARTE ${i+1} da apostila sobre: "${material.title}".
+    
+    ESTA PARTE DEVE CONTER:
+    ${section.items.join("\n")}
+    
+    REGRAS:
+    1. PRECISÃO TOTAL E LINGUAGEM TÉCNICA.
+    2. USE MARKDOWN.
+    3. NÃO REPRODUZA O TÍTULO SE JÁ FOI FEITO EM PARTES ANTERIORES (A MENOS QUE SEJA A PARTE 1).
+    
+    CONTEÚDO JÁ GERADO (CONTEXTO):
+    ${fullContent.slice(-1000)} ...`;
+
+    try {
+      console.log(`[Material] Gerando ${section.name}...`);
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      fullContent += "\n\n" + text;
+      
+      // Como o usuário pediu para "gerar um pouco e esperar", vamos aguardar um pouco entre as partes
+      // mas apenas se houver mais partes a serem geradas.
+      if (i < sections.length - 1) {
+         console.log(`[Material] Parte ${i+1} concluída. Aguardando reset de limite (60s)...`);
+         await sleep(60000); // 1 minuto entre partes como solicitado
+       }
+    } catch (err) {
+      if (err.message.includes("429") || err.message.includes("Quota")) {
+        console.warn(`⚠️ Limite atingido na geração do material. Aguardando 60s para continuar...`);
+        await sleep(60000);
+        i--; // Tenta a mesma seção novamente
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  return { content: fullContent.trim() };
 }
 
 async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects }) {
