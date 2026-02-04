@@ -69,10 +69,11 @@ const OPENROUTER_MODELS = [
 
 const GROQ_MODELS = [
   "llama-3.3-70b-versatile",
-  "deepseek-r1-distill-llama-70b",
-  "mixtral-8x7b-32768",
   "llama-3.1-8b-instant",
-  "llama-3.2-11b-vision-preview"
+  "mixtral-8x7b-32768",
+  "deepseek-r1-distill-llama-70b",
+  "llama-guard-3-8b",
+  "qwen-qwq-32b"
 ];
 
 const SAFETY_SETTINGS = [
