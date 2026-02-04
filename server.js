@@ -55,9 +55,9 @@ const MODEL_FALLBACK_LIST = [
 
 const OPENROUTER_MODELS = [
   "qwen/qwen3-next-80b-a3b-instruct:free",
-  "qwen/qwen-2-7b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free",
   "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.3-70b-instruct:free"
+  "meta-llama/llama-3.1-8b-instruct:free"
 ];
 
 const SAFETY_SETTINGS = [
@@ -378,7 +378,13 @@ async function runWithModelFallback(ai, actionName, payload) {
     // --- TENTANDO OPENROUTER ---
     if (provider === 'openrouter' && ai.openRouter) {
       let models = [ai.openRouter.model, ...OPENROUTER_MODELS.filter(m => m !== ai.openRouter.model)];
+      let attempts = 0;
+      const MAX_ATTEMPTS = 2; // Limita a apenas 2 modelos para evitar demora excessiva
+
       for (const model of models) {
+        if (attempts >= MAX_ATTEMPTS) break;
+        attempts++;
+
         try {
           console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
           
@@ -487,7 +493,19 @@ async function runWithModelFallback(ai, actionName, payload) {
           }
           return actionName === 'generateMaterialContent' ? { content: res.text } : res;
         } catch (error) {
-          console.warn(`⚠️ OpenRouter ${model} falhou: ${error.message}. Tentando próximo modelo...`);
+          console.warn(`⚠️ OpenRouter ${model} falhou: ${error.message}.`);
+          
+          // Se for limite de taxa, não adianta tentar outros modelos free no mesmo provedor
+          if (error.message.includes("RATE_LIMIT")) {
+            console.warn("🛑 Limite de taxa atingido no OpenRouter. Pulando para o próximo provedor...");
+            break; 
+          }
+
+          // Se o modelo não existe, pula para o próximo
+          if (error.message.includes("No endpoints found")) {
+            continue;
+          }
+
           continue;
         }
       }
