@@ -846,7 +846,6 @@ async function runWithModelFallback(ai, actionName, payload) {
 
   throw new Error("Todas as IAs e modelos (Gemini, Mistral, Groq e OpenRouter) atingiram o limite de uso.");
 }
-}
 
 // --- AÇÕES ---
 
