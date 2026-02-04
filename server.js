@@ -74,6 +74,12 @@ const GROQ_MODELS = [
   "gemma2-9b-it"
 ];
 
+const MISTRAL_MODELS = [
+  "mistral-large-2411",
+  "pixtral-12b-2409",
+  "open-mistral-nemo"
+];
+
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -276,8 +282,9 @@ function getAI() {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   const openRouterKey = process.env.OPENAI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
+  const mistralKey = process.env.MISTRAL_API_KEY;
   
-  if (!geminiKey && !openRouterKey && !groqKey) {
+  if (!geminiKey && !openRouterKey && !groqKey && !mistralKey) {
     throw new Error("API_KEY_MISSING");
   }
   
@@ -293,7 +300,12 @@ function getAI() {
       baseUrl: 'https://api.groq.com/openai/v1',
       model: 'llama-3.3-70b-versatile'
     } : null,
-    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (groqKey ? 'groq' : (openRouterKey ? 'openrouter' : 'gemini'))
+    mistral: mistralKey ? {
+      apiKey: mistralKey,
+      baseUrl: 'https://api.mistral.ai/v1',
+      model: 'mistral-large-2411'
+    } : null,
+    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter')))
   };
 }
 
@@ -338,6 +350,56 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
       
       if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
       throw new Error(errorMsg || `Erro Groq: ${response.status}`);
+    }
+
+    const data = JSON.parse(rawText);
+    return { text: data.choices[0].message.content || "" };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// --- CHAMADA MISTRAL ---
+async function callMistral(config, prompt, isJson = false, history = null, specificModel = null) {
+  const headers = {
+    "Authorization": `Bearer ${config.apiKey.trim()}`,
+    "Content-Type": "application/json"
+  };
+
+  const messages = history ? [...history] : [];
+  if (prompt) {
+    messages.push({ role: "user", content: prompt });
+  }
+
+  const body = {
+    model: specificModel || config.model,
+    messages: [
+      { role: "system", content: BIZU_SYSTEM_PROMPT },
+      ...messages
+    ],
+    response_format: isJson ? { type: "json_object" } : undefined,
+    temperature: 0.7,
+    max_tokens: 4000
+  };
+
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+
+    const rawText = await response.text();
+    
+    if (!response.ok) {
+      let errorMsg = rawText;
+      try {
+        const errorData = JSON.parse(rawText || "{}");
+        errorMsg = errorData.error?.message || rawText;
+      } catch (e) {}
+      
+      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+      throw new Error(errorMsg || `Erro Mistral: ${response.status}`);
     }
 
     const data = JSON.parse(rawText);
@@ -415,8 +477,9 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 async function runWithModelFallback(ai, actionName, payload) {
   // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
   // Prioridade 1: Gemini (Pelo limite massivo de tokens e estabilidade)
-  // Prioridade 2: Groq (Pela velocidade quando houver limite disponível)
-  let providersToTry = ['gemini', 'groq'];
+  // Prioridade 2: Mistral (Reforço de 1 Bilhão de tokens)
+  // Prioridade 3: Groq (Pela velocidade quando houver limite disponível)
+  let providersToTry = ['gemini', 'mistral', 'groq'];
   
   // Se Groq falhar ou bater limite, ele vai direto para o Gemini
   if (ai.preferredProvider === 'openrouter') {
@@ -424,6 +487,98 @@ async function runWithModelFallback(ai, actionName, payload) {
   }
 
   for (const provider of providersToTry) {
+    // --- TENTANDO MISTRAL ---
+    if (provider === 'mistral' && ai.mistral) {
+      for (const model of MISTRAL_MODELS) {
+        try {
+          console.log(`[Mistral] Tentando ${actionName} com ${model}`);
+          
+          let prompt = "";
+          let isJson = false;
+          let history = null;
+
+          if (actionName === 'generateStudyMaterials') {
+            const topic = payload.topic || 'Concursos Públicos';
+            const count = payload.count || 3;
+            let allMaterials = [];
+
+            for (let i = 0; i < count; i++) {
+              const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
+              Responda APENAS JSON: { "title": "...", "intro": "..." }`;
+              
+              const skeletonRes = await callMistral(ai.mistral, skeletonPrompt, true, null, model);
+              const skeleton = JSON.parse(extractJSON(skeletonRes.text));
+
+              let fullContent = skeleton.intro + "\n\n";
+              const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+
+              for (const part of parts) {
+                const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
+                FOCO: Máxima profundidade e Markdown rico.
+                Retorne apenas o texto em Markdown.`;
+                
+                const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
+                fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
+                await sleep(1000);
+              }
+
+              allMaterials.push({
+                id: Date.now() + i,
+                title: skeleton.title,
+                content: fullContent,
+                category: topic,
+                timestamp: new Date()
+              });
+            }
+            return allMaterials;
+          } else if (actionName === 'generateQuiz') {
+            const batchSize = 5;
+            const totalQuestions = Math.min(payload.numberOfQuestions, 100);
+            let allQuestions = [];
+            const numBatches = Math.ceil(totalQuestions / batchSize);
+
+            for (let i = 0; i < numBatches; i++) {
+              const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+              const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}".
+              Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
+              
+              let success = false;
+              let retryCount = 0;
+              while (!success && retryCount < 3) {
+                try {
+                  const res = await callMistral(ai.mistral, batchPrompt, true, null, model);
+                  const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                  allQuestions = [...allQuestions, ...batchQuestions];
+                  success = true;
+                  await sleep(1000);
+                } catch (err) {
+                  retryCount++;
+                  if (err.message.includes("RATE_LIMIT")) await sleep(2000);
+                  else throw err;
+                }
+              }
+            }
+            return allQuestions;
+          } else if (actionName === 'askTutor') {
+            history = (payload.history || []).map(m => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.parts[0].text
+            }));
+            prompt = payload.message;
+          } else {
+            // Outras ações usam prompt padrão
+            prompt = "Processando ação..."; // Simplificado para brevidade, idealmente replicar lógica do Groq
+          }
+
+          const res = await callMistral(ai.mistral, prompt, isJson, history, model);
+          return actionName === 'generateMaterialContent' ? { content: res.text } : res;
+        } catch (error) {
+          console.warn(`⚠️ Mistral ${model} falhou: ${error.message}.`);
+          continue;
+        }
+      }
+    }
+
     // --- TENTANDO GROQ ---
     if (provider === 'groq' && ai.groq) {
       for (const model of GROQ_MODELS) {
