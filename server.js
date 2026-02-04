@@ -532,15 +532,6 @@ async function runWithModelFallback(ai, actionName, payload) {
           try {
             console.log(`[Mistral] Tentando ${actionName} com ${model}`);
             
-            // Verificação de ações específicas que chamam handlers do Gemini
-            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
-
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -623,6 +614,10 @@ async function runWithModelFallback(ai, actionName, payload) {
               prompt = `Crie um CRONOGRAMA DE ESTUDO semanal para: "${payload.targetExam}". Hours: ${payload.hours}. Subjects: ${payload.subjects}.
               Schema JSON: { "title": "...", "description": "...", "weekSchedule": [{ "day": "...", "tasks": [{"subject": "...", "duration": "...", "activity": "..."}] }] }`;
               isJson = true;
+            } else if (actionName === 'createCustomMaterial') {
+              prompt = `Você é um Especialista em Concursos. Crie um material estratégico sobre: "${payload.topic}".
+              JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
+              isJson = true;
             } else {
               prompt = "Processando ação..."; 
             }
@@ -647,15 +642,6 @@ async function runWithModelFallback(ai, actionName, payload) {
           try {
             console.log(`[Groq] Tentando ${actionName} com ${model}`);
             
-            // Redireciona para os handlers especializados do Gemini em caso de falha ou fallback
-            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
-
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -747,8 +733,12 @@ async function runWithModelFallback(ai, actionName, payload) {
               prompt = `Liste 5 concursos IMPORTANTES de 2026.
               JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
               isJson = true;
+            } else if (actionName === 'createCustomMaterial') {
+              prompt = `Você é um Especialista em Concursos. Crie um material estratégico sobre: "${payload.topic}".
+              JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
+              isJson = true;
             }
-
+            
             const res = await callGroq(ai.groq, prompt, isJson, history, model);
             if (isJson) {
               const parsed = JSON.parse(extractJSON(res.text));
@@ -772,15 +762,6 @@ async function runWithModelFallback(ai, actionName, payload) {
           try {
             console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
             
-            // Redireciona para os handlers especializados do Gemini para garantir consistência
-            if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, 'gemini-1.5-flash', payload);
-            if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, 'gemini-1.5-flash', payload);
-
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -822,6 +803,10 @@ async function runWithModelFallback(ai, actionName, payload) {
             } else if (actionName === 'updateRadar') {
               prompt = `Liste 5 concursos IMPORTANTES de 2026.
               JSON Array: [{"institution":"Nome","title":"Cargo","forecast":"Previsão","status":"Previsto","salary":"R$","board":"Banca","url":""}]`;
+              isJson = true;
+            } else if (actionName === 'createCustomMaterial') {
+              prompt = `Você é um Especialista em Concursos. Crie um material estratégico sobre: "${payload.topic}".
+              JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             }
 
