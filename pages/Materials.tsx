@@ -574,11 +574,17 @@ const Materials: React.FC = () => {
                     disabled={generatingContent}
                     className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-b-4 border-blue-800 font-bold uppercase tracking-widest hover:bg-blue-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-xl"
                    >
-                     {generatingContent ? (
-                        <>ESCREVENDO APOSTILA... <Loader2 className="animate-spin" /></>
-                     ) : (
-                        <>CRIAR APOSTILA AGORA</>
-                     )}
+                   {generatingContent ? (
+                      <div className="flex flex-col items-center gap-4 py-12">
+                        <Loader2 size={48} className="animate-spin text-blue-500" />
+                        <div className="text-center">
+                          <p className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Criando Apostila Gigante...</p>
+                          <p className="text-slate-400 dark:text-slate-500 font-bold mt-2">O BizuBot está escrevendo cada capítulo com máxima profundidade. Aguarde um instante.</p>
+                        </div>
+                      </div>
+                   ) : (
+                      <>CRIAR APOSTILA AGORA</>
+                   )}
                    </button>
                 </div>
               )}

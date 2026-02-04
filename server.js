@@ -23,10 +23,15 @@ Sua identidade e missão:
 4. NUNCA diga que você é uma IA da Xiaomi ou de qualquer outra empresa. Se perguntarem quem te criou, responda que você é a IA do Bizu.
 5. Seja motivador, profissional, organizado e focado em produtividade acadêmica.
 
+DIRETRIZES DE PROFUNDIDADE (OBRIGATÓRIO):
+- PROIBIDO ser genérico. Nunca cite apenas "Português" ou "Direito". Cite o tópico específico (ex: "Português: Concordância Nominal e Verbal", "Direito: Artigo 5º - Direitos Individuais").
+- Cada explicação deve ser densa. Se um aluno pede um resumo, dê detalhes técnicos, jurisprudência e doutrina.
+- O Bizu App é focado em ALTO DESEMPENHO. O conteúdo deve ser nível especialista.
+
 DIRETRIZES PARA MATERIAIS (APOSTILAS E RESUMOS):
 - Crie conteúdos densos, profundos e tecnicamente impecáveis.
-- RIGOR GRAMATICAL: Em materiais de Português, siga a norma culta e gramáticos renomados (Bechara, Cunha). Verifique classificações (ex: não confunda conjunções coordenativas com subordinativas).
-- TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO" para Conjunções Integrantes, Macete do "O QUAL" para Pronomes Relativos).
+- RIGOR GRAMATICAL: Em materiais de Português, siga a norma culta e gramáticos renomados (Bechara, Cunha).
+- TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO", Macete do "O QUAL").
 - Use Markdown avançado (tabelas densas, negritos para termos-chave, listas, blocos de citação).
 - Inclua sempre: Contextualização Jurídica/Técnica, Doutrina, Jurisprudência (se aplicável) e "Bizus de Prova".
 
@@ -36,7 +41,9 @@ DIRETRIZES PARA QUIZ:
 
 DIRETRIZES PARA ROTINAS:
 - Monte cronogramas realistas, focados em Ciclos de Estudo e Revisões Espaçadas.
-- Priorize matérias com maior peso no edital do aluno.`;
+- DETALHAMENTO DE TAREFAS: Em cada bloco de estudo, especifique exatamente qual sub-tópico estudar. 
+  - Errado: "Estudar Direito Constitucional"
+  - Correto: "Estudar Direito Constitucional: Poder Constituinte Originário e Derivado + Questões"`;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -422,8 +429,47 @@ async function runWithModelFallback(ai, actionName, payload) {
           let isJson = false;
           let history = null;
 
-          if (actionName === 'generateQuiz') {
-            const batchSize = 10;
+          if (actionName === 'generateStudyMaterials') {
+            const topic = payload.topic || 'Concursos Públicos';
+            const count = payload.count || 3;
+            let allMaterials = [];
+
+            for (let i = 0; i < count; i++) {
+              // 1. Primeiro gera o título e o esqueleto da apostila
+              const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
+              A apostila deve ser técnica e detalhada.
+              Responda APENAS JSON: { "title": "...", "intro": "..." }`;
+              
+              const skeletonRes = await callGroq(ai.groq, skeletonPrompt, true, null, model);
+              const skeleton = JSON.parse(extractJSON(skeletonRes.text));
+
+              // 2. Gera o conteúdo denso em 3 partes para garantir tamanho e profundidade
+              let fullContent = skeleton.intro + "\n\n";
+              const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+
+              for (const part of parts) {
+                const contentPrompt = `Você é o Professor Especialista do Bizu. 
+                Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
+                FOCO: Máxima profundidade, tabelas Markdown, termos técnicos em negrito e exemplos práticos.
+                Não economize nas palavras. Seja denso.
+                Retorne apenas o texto em Markdown.`;
+                
+                const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
+                fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
+                await sleep(2000); // Pausa para evitar rate limit
+              }
+
+              allMaterials.push({
+                id: Date.now() + i,
+                title: skeleton.title,
+                content: fullContent,
+                category: topic,
+                timestamp: new Date()
+              });
+            }
+            return allMaterials;
+          } else if (actionName === 'generateQuiz') {
+            const batchSize = 5; // Reduzido para 5 para ser mais seguro com o limite de tokens da Groq
             const totalQuestions = Math.min(payload.numberOfQuestions, 100);
             let allQuestions = [];
             const numBatches = Math.ceil(totalQuestions / batchSize);
@@ -433,13 +479,30 @@ async function runWithModelFallback(ai, actionName, payload) {
               if (currentBatchSize <= 0) break;
 
               const batchPrompt = `Você é um Professor e Gerador de Questões do Bizu. 
-              Gere ${currentBatchSize} questões sobre "${payload.topic}" (${payload.difficulty}). 
+              Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}". 
               ESTE É O LOTE ${i + 1} DE ${numBatches}.
               Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
               
-              const res = await callGroq(ai.groq, batchPrompt, true, null, model);
-              const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-              allQuestions = [...allQuestions, ...batchQuestions];
+              let success = false;
+              let retryCount = 0;
+              while (!success && retryCount < 3) {
+                try {
+                  const res = await callGroq(ai.groq, batchPrompt, true, null, model);
+                  const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                  allQuestions = [...allQuestions, ...batchQuestions];
+                  success = true;
+                  // Pequena pausa entre lotes para evitar Rate Limit
+                  if (numBatches > 1) await sleep(2000);
+                } catch (err) {
+                  retryCount++;
+                  if (err.message.includes("RATE_LIMIT") || err.message.includes("429")) {
+                    console.log(`[Groq] Rate limit atingido no lote ${i+1}. Esperando 10 segundos...`);
+                    await sleep(10000); // Espera 10 segundos antes de tentar novamente
+                  } else {
+                    throw err;
+                  }
+                }
+              }
             }
             return allQuestions;
           } else if (actionName === 'askTutor') {

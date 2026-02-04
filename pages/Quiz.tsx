@@ -36,8 +36,9 @@ const Quiz: React.FC = () => {
     e.preventDefault();
     if (!config.topic) return;
 
-    // Calcular tempo estimado (aprox. 1.5s por questão devido ao processamento em lote)
-    const totalSeconds = Math.ceil(config.numberOfQuestions * 1.5);
+    // Calcular tempo estimado (aprox. 3s por lote de 5 questões + pausas)
+    const batches = Math.ceil(config.numberOfQuestions / 5);
+    const totalSeconds = batches * 5; // Estimativa conservadora
     setEstimatedSeconds(totalSeconds);
     
     setLoading(true);
