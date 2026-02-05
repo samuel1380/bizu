@@ -200,38 +200,45 @@ export const clearAllMaterials = async () => {
 
 // Routine Helpers
 export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
-  // 1. Tenta carregar do localStorage (mais rápido e persistente no aparelho)
+  console.log("db: getStudyRoutine iniciado");
+  // 1. Tenta carregar do localStorage
   const localData = localStorage.getItem('bizu_user_routine');
   let routine: StudyRoutine | undefined;
 
   if (localData) {
     try {
       routine = JSON.parse(localData);
+      console.log("db: Rotina encontrada no localStorage");
     } catch (e) {
-      console.error("Erro ao ler rotina do localStorage", e);
+      console.error("db: Erro ao ler rotina do localStorage", e);
     }
   }
 
   // 2. Se não estiver no localStorage, tenta IndexedDB
   if (!routine) {
-    const db = await getDB();
-    routine = await db.get('routine', 'user_routine');
+    try {
+      const db = await getDB();
+      routine = await db.get('routine', 'user_routine');
+      if (routine) console.log("db: Rotina encontrada no IndexedDB");
+    } catch (e) {
+      console.error("db: Erro ao buscar no IndexedDB", e);
+    }
   }
 
   // 3. Se estiver usando Supabase, tenta sincronizar/buscar da nuvem
   if (USE_SUPABASE) {
+    console.log("db: Tentando sincronizar com Supabase...");
     try {
       const cloudRoutine = await supabaseService.getStudyRoutine();
       if (cloudRoutine) {
-        // Se a da nuvem existir, ela tem prioridade ou serve para restaurar
+        console.log("db: Rotina encontrada no Supabase, atualizando local");
         routine = cloudRoutine;
-        // Atualiza local para manter sincronizado
         localStorage.setItem('bizu_user_routine', JSON.stringify(cloudRoutine));
         const db = await getDB();
         await db.put('routine', { ...cloudRoutine, id: 'user_routine' });
       }
     } catch (e) {
-      console.warn("Erro ao buscar rotina da nuvem, usando local:", e);
+      console.warn("db: Erro ao buscar rotina da nuvem:", e);
     }
   }
 
@@ -239,22 +246,35 @@ export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
 };
 
 export const saveStudyRoutine = async (routine: StudyRoutine) => {
+  console.log("db: saveStudyRoutine iniciado para", routine.targetExam);
   // Garante o ID padrão
   routine.id = 'user_routine';
 
   // 1. Salva no localStorage (Aparelho)
-  localStorage.setItem('bizu_user_routine', JSON.stringify(routine));
+  try {
+    localStorage.setItem('bizu_user_routine', JSON.stringify(routine));
+    console.log("db: Salvo no localStorage");
+  } catch (e) {
+    console.error("db: Erro ao salvar no localStorage", e);
+  }
 
   // 2. Salva no IndexedDB (Cache local estruturado)
-  const db = await getDB();
-  await db.put('routine', routine);
+  try {
+    const db = await getDB();
+    await db.put('routine', routine);
+    console.log("db: Salvo no IndexedDB");
+  } catch (e) {
+    console.error("db: Erro ao salvar no IndexedDB", e);
+  }
 
   // 3. Salva no Supabase (Nuvem)
   if (USE_SUPABASE) {
+    console.log("db: Salvando no Supabase...");
     try {
       await supabaseService.saveStudyRoutine(routine);
+      console.log("db: Salvo no Supabase");
     } catch (e) {
-      console.error("Erro ao salvar rotina na nuvem:", e);
+      console.error("db: Erro ao salvar rotina na nuvem:", e);
     }
   }
 };
