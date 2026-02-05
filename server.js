@@ -32,8 +32,13 @@ DIRETRIZES PARA MATERIAIS (APOSTILAS E RESUMOS):
 - Crie conteúdos densos, profundos e tecnicamente impecáveis.
 - RIGOR GRAMATICAL: Em materiais de Português, siga a norma culta e gramáticos renomados (Bechara, Cunha).
 - TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO", Macete do "O QUAL").
-- Use Markdown avançado (tabelas densas, negritos para termos-chave, listas, blocos de citação).
-- Inclua sempre: Contextualização Jurídica/Técnica, Doutrina, Jurisprudência (se aplicável) e "Bizus de Prova".
+  - Use Markdown avançado (tabelas densas, negritos para termos-chave, listas, blocos de citação).
+  - Include sempre: Contextualização Jurídica/Técnica, Doutrina, Jurisprudência (se aplicável) e "Bizus de Prova".
+
+DIRETRIZES DE ESTRATÉGIA (OBRIGATÓRIO PARA MATERIAIS):
+- ESTRATÉGIA DE ESTUDO: Em cada apostila, você DEVE incluir uma seção detalhada sobre COMO estudar aquele tema, ciclos de revisão sugeridos e como organizar o aprendizado.
+- ESTRATÉGIA DE PROVA: Forneça orientações específicas sobre como as bancas (FGV, CESPE, FCC, VUNESP, etc.) cobram o assunto, quais as "pegadinhas" comuns e como eliminar alternativas.
+- FOCO EM RESULTADO: O conteúdo deve preparar o aluno não apenas para entender a matéria, mas para acertar a questão na hora da prova.
 
 DIRETRIZES PARA QUIZ:
 - Gere questões desafiadoras, similares às de bancas como FGV, CESPE e FCC.
@@ -554,11 +559,17 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
                 let fullContent = skeleton.intro + "\n\n";
-                const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+                const parts = [
+                  "Conceitos Fundamentais e Doutrina", 
+                  "Desenvolvimento Técnico e Detalhamento", 
+                  "Estratégias de Estudo (Ciclos e Memorização)",
+                  "Estratégias de Prova (Bancas e Pegadinhas)",
+                  "Bizus de Prova, Jurisprudência e Resumo Final"
+                ];
 
                 for (const part of parts) {
                   const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
-                  FOCO: Máxima profundidade e Markdown rico.
+                  FOCO: Máxima profundidade, estratégias práticas para o aluno e Markdown rico.
                   Retorne apenas o texto em Markdown.`;
                   
                   const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
@@ -664,10 +675,17 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
                 let fullContent = skeleton.intro + "\n\n";
-                const parts = ["Conceitos Fundamentais e Doutrina", "Desenvolvimento Técnico e Detalhamento", "Bizus de Prova, Jurisprudência e Resumo Final"];
+                const parts = [
+                  "Conceitos Fundamentais e Doutrina", 
+                  "Desenvolvimento Técnico e Detalhamento", 
+                  "Estratégias de Estudo (Ciclos e Memorização)",
+                  "Estratégias de Prova (Bancas e Pegadinhas)",
+                  "Bizus de Prova, Jurisprudência e Resumo Final"
+                ];
 
                 for (const part of parts) {
                   const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
+                  FOCO: Máxima profundidade, estratégias práticas para o aluno e Markdown rico.
                   Retorne apenas o texto em Markdown.`;
                   
                   const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
@@ -944,8 +962,8 @@ async function handleGenerateMaterialContent(genAI, modelName, { material }) {
   const sections = [
     { name: "Título e Introdução", items: ["# Título Estratégico", "## 1. Introdução e Importância para Provas"] },
     { name: "Desenvolvimento Teórico", items: ["## 2. Desenvolvimento Teórico Aprofundado (Mínimo de 3 sub-tópicos ###)", "## 3. Tabela de Classificação e Exemplos"] },
-    { name: "Diferenciação e Bizus", items: ["## 4. Quadro de Diferenciação", "## 5. Bizus de Prova e Alertas de Pegadinha"] },
-    { name: "Questões e Resumo", items: ["## 6. Questão de Concurso Comentada", "## 7. Resumo em Checklist para Revisão Final"] }
+    { name: "Estratégias de Estudo", items: ["## 4. Estratégias de Estudo (Técnicas de Memorização e Ciclos de Revisão)", "## 5. Como Organizar o Estudo Deste Tema"] },
+    { name: "Estratégias de Prova", items: ["## 6. Estratégias de Prova (Análise de Bancas e Pegadinhas Comuns)", "## 7. Bizus de Prova, Jurisprudência e Resumo Final"] }
   ];
 
   let fullContent = "";
