@@ -23,39 +23,41 @@ Sua identidade e missão:
 4. NUNCA diga que você é uma IA da Xiaomi ou de qualquer outra empresa. Se perguntarem quem te criou, responda que você é a IA do Bizu.
 5. Seja motivador, profissional, organizado e focado em produtividade acadêmica.
 
-DETECÇÃO DE PERFIL (OBRIGATÓRIO):
-- Identifique se o objetivo do usuário é CONCURSO PÚBLICO ou ENEM/VESTIBULAR/ACADÊMICO baseado nos termos fornecidos (ex: "Polícia", "FGV", "INSS" -> Concurso; "ENEM", "Fuvest", "Vestibular", "Medicina" -> Acadêmico).
-- Adapte sua linguagem, profundidade e referências de acordo com o perfil identificado.
+DETECÇÃO DE ALVO E PERFIL (MUITO IMPORTANTE):
+- Identifique EXATAMENTE qual o concurso, banca ou vestibular o usuário inseriu (ex: "INSS", "Polícia Federal", "ENEM", "Fuvest", "Vunesp", "Banco do Brasil", etc).
+- Adapte 100% da sua linguagem, estilo de questões e profundidade para aquele exame ESPECÍFICO.
+- Se o usuário pedir questões para o "INSS", crie questões que simulem o estilo e o nível de cobrança do INSS (geralmente banca Cebraspe/Cespe - Certo/Errado).
+- Se o usuário citar "ENEM", o formato DEVE SER o do ENEM: enunciados com contexto, interdisciplinaridade, 5 alternativas e foco na resolução de problemas baseados em textos-base.
+- Se pedir um vestibular específico (ex: USP/Fuvest, Unicamp, UEMA), imite as particularidades complexas dessa prova.
 
 DIRETRIZES DE PROFUNDIDADE (OBRIGATÓRIO):
 - PROIBIDO ser genérico. Nunca cite apenas "Português" ou "Matemática". Cite o tópico específico (ex: "Português: Concordância Nominal e Verbal", "Biologia: Genética Mendeliana").
-- Para CONCURSOS: Dê detalhes técnicos, jurisprudência e doutrina.
-- Para ENEM/VESTIBULAR: Foque em conceitos fundamentais, interdisciplinaridade, aplicação prática e recorrência nos exames.
+- Para CONCURSOS: Traga detalhes técnicos focados na banca, lei seca atualizada, jurisprudência e doutrina pertinentes.
+- Para ENEM/VESTIBULAR: Foque em conceitos fundamentais, interdisciplinaridade, aplicação prática e assuntos de alta recorrência.
 - O Bizu App é focado em ALTO DESEMPENHO. O conteúdo deve ser nível especialista para o público-alvo.
 
 DIRETRIZES PARA MATERIAIS (APOSTILAS E RESUMOS):
-- Crie conteúdos densos, profundos e tecnicamente impecáveis.
-- RIGOR GRAMATICAL: Siga a norma culta. Para redação (ENEM/Vestibular), forneça dicas de estrutura e competências.
-- TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO", Macete do "O QUAL", mnemônicos de biologia/história).
+- Crie conteúdos densos, profundos e tecnicamente impecáveis, SEMPRE moldados ao exame que o usuário informou.
+- RIGOR GRAMATICAL: Siga a norma culta. Para redação (ENEM/Vestibular), forneça dicas de estrutura e competências avaliativas.
+- TÉCNICAS DE MEMORIZAÇÃO: Use macetes validados (ex: Macete do "ISSO", Macete do "O QUAL", mnemônicos de biologia/história/direito).
 - Use Markdown avançado (tabelas densas, negritos para termos-chave, listas, blocos de citação).
-- Include sempre: Contextualização (Jurídica/Técnica ou Histórica/Social), Teoria Detalhada, "Bizus de Prova" e, para ENEM, uma seção de "Interdisciplinaridade".
+- Include sempre: Contextualização, Teoria Detalhada e "Bizus de Prova" explicando como o assunto costuma cair na prova dele.
 
 DIRETRIZES DE ESTRATÉGIA (OBRIGATÓRIO PARA MATERIAIS):
-- ESTRATÉGIA DE ESTUDO: Em cada apostila, você DEVE incluir uma seção detalhada sobre COMO estudar aquele tema, ciclos de revisão sugeridos e como organizar o aprendizado.
-- ESTRATÉGIA DE PROVA: Forneça orientações específicas sobre como a banca ou o exame (FGV, CESPE, ENEM, Fuvest, etc.) cobra o assunto, quais as "pegadinhas" comuns e como eliminar alternativas.
-- FOCO EM RESULTADO: O conteúdo deve preparar o aluno para acertar a questão na hora da prova.
+- ESTRATÉGIA DE ESTUDO: Inclua uma seção detalhada sobre COMO estudar aquele tema, ciclos de revisão e como organizar o aprendizado.
+- ESTRATÉGIA DE PROVA: Forneça orientações específicas de como a banca/exame cobram o assunto, "pegadinhas" comuns e técnicas de eliminação e chute consciente.
 
-DIRETRIZES PARA QUIZ:
-- Gere questões desafiadoras.
-- Para CONCURSOS: Estilo múltipla escolha ou Certo/Errado (estilo CESPE/FGV).
-- Para ENEM: Questões baseadas em competências e habilidades, com textos de apoio e situações-problema.
-- As explicações devem ser pedagógicas, ensinando o porquê de cada alternativa estar certa ou errada.
+DIRETRIZES PARA QUIZ E QUESTÕES (EXTREMAMENTE CRÍTICO):
+- Você DEVE moldar as questões estritamente ao nível e estilo de formatação da banca/exame solicitado (múltipla escolha (A,B,C,D,E) ou Certo/Errado).
+- Se for ENEM: DEVE conter um pequeno texto motivador ou tirinha, situação-problema real e usar a estrutura de competências. 
+- Se for Concurso e a banca clássica for Cespe/Cebraspe (como INSS ou PF), faça questões estilo Certo/Errado, avaliando lei e jurisprudência. Se for FGV/FCC, faça múltipla escolha complexa.
+- As explicações e gabaritos devem ser excepcionais e pedagógicos, dissecando alternativa por alternativa e explicando o erro e acerto de cada uma.
 
 DIRETRIZES PARA ROTINAS:
-- Monte cronogramas realistas, focados em Ciclos de Estudo e Revisões Espaçadas.
-- DETALHAMENTO DE TAREFAS: Em cada bloco de estudo, especifique exatamente qual sub-tópico estudar. 
-  - Errado: "Estudar Biologia"
-  - Correto: "Estudar Biologia: Citologia - Membrana Plasmática e Transportes + Questões"`;
+- Monte cronogramas ultra-realistas, com foco nos assuntos de ALTO PESO para o exame solicitado.
+- DETALHAMENTO DE TAREFAS: Em cada bloco de estudo, especifique exatamente qual sub-tópico estudar da matéria. 
+  - Errado: "Estudar Direito" ou "Biologia"
+  - Correto: "Direito Previdenciário (Foco INSS): Segurados Obrigatórios e Facultativos - Lei 8.212 + Questões"`;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -123,27 +125,27 @@ app.post('/webhooks/hubla', async (req, res) => {
       return res.status(401).send('Token inválido');
     }
 
-    let email = event.data?.user?.email || 
-        event.data?.customer?.email || 
-        event.data?.buyer?.email || 
-        event.data?.client?.email || 
-        event.data?.email || 
-        event.user?.email || 
-        event.customer?.email || 
-        event.buyer?.email || 
-        event.client?.email || 
-        event.user_email || 
-        event.customer_email || 
-        event.email;
-        
-    let status = event.event_type || 
-        event.type || 
-        event.event || 
-        event.name || 
-        event.data?.event_type || 
-        event.data?.status || 
-        event.status || 
-        'unknown';
+    let email = event.data?.user?.email ||
+      event.data?.customer?.email ||
+      event.data?.buyer?.email ||
+      event.data?.client?.email ||
+      event.data?.email ||
+      event.user?.email ||
+      event.customer?.email ||
+      event.buyer?.email ||
+      event.client?.email ||
+      event.user_email ||
+      event.customer_email ||
+      event.email;
+
+    let status = event.event_type ||
+      event.type ||
+      event.event ||
+      event.name ||
+      event.data?.event_type ||
+      event.data?.status ||
+      event.status ||
+      'unknown';
 
     if (!email) {
       console.error('ERRO: Email não encontrado no payload da Hubla:', JSON.stringify(event));
@@ -169,12 +171,12 @@ app.post('/webhooks/hubla', async (req, res) => {
     // 2. LOGICA DE ACESSO AO APP (TABELA PROFILES)
     let isActive = false;
     let subscriptionType = 'trial'; // default
-    
+
     // Status que LIBERAM ou MANTÊM o acesso (Busca por palavras-chave para ser ultra-flexível)
     const activeKeywords = [
       'completed', 'approved', 'renewed', 'active', 'granted', 'confirmed', 'paid', 'success'
     ];
-    
+
     // Status que BLOQUEIAM o acesso
     const inactiveKeywords = [
       'cancelled', 'refunded', 'expired', 'removed', 'chargeback', 'deactivated', 'failed'
@@ -186,28 +188,28 @@ app.post('/webhooks/hubla', async (req, res) => {
 
     if (isEventActive) {
       isActive = true;
-      
+
       // Lógica para definir o período baseado no produto ou recorrência
       const productName = (
-        event.data?.product_name || 
-        event.data?.product?.name || 
-        event.product_name || 
-        event.product?.name || 
-        event.data?.offer?.name || 
-        event.offer?.name || 
+        event.data?.product_name ||
+        event.data?.product?.name ||
+        event.product_name ||
+        event.product?.name ||
+        event.data?.offer?.name ||
+        event.offer?.name ||
         ''
       ).toLowerCase();
 
       const interval = (
-        event.data?.subscription?.interval || 
-        event.subscription?.interval || 
-        event.data?.interval || 
-        event.interval || 
+        event.data?.subscription?.interval ||
+        event.subscription?.interval ||
+        event.data?.interval ||
+        event.interval ||
         ''
       ).toLowerCase();
-      
+
       const trialEndsAt = new Date();
-      
+
       if (productName.includes('anual') || interval === 'year' || interval === 'yearly') {
         trialEndsAt.setFullYear(trialEndsAt.getFullYear() + 1);
         subscriptionType = 'anual';
@@ -221,16 +223,16 @@ app.post('/webhooks/hubla', async (req, res) => {
       }
 
       console.log(`✅ [LIBERAÇÃO] Evento "${status}" reconhecido como ATIVO para ${email}. Expira em: ${trialEndsAt.toISOString()}`);
-      
+
       // Atualiza o perfil com a nova data de expiração e status ativo
       // O campo subscription_active deve ser TRUE para indicar que é uma assinatura paga
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({ 
+        .upsert({
           email: email.trim().toLowerCase(),
           subscription_active: true, // Prioridade máxima: Assinatura paga
           subscription_type: subscriptionType,
-          trial_ends_at: trialEndsAt.toISOString(), 
+          trial_ends_at: trialEndsAt.toISOString(),
           last_webhook_event: status,
           updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
@@ -240,33 +242,33 @@ app.post('/webhooks/hubla', async (req, res) => {
         // Tentar um segundo método de segurança caso o upsert falhe
         const { error: secondTryError } = await supabase
           .from('profiles')
-          .update({ 
-            subscription_active: true, 
+          .update({
+            subscription_active: true,
             subscription_type: subscriptionType,
             trial_ends_at: trialEndsAt.toISOString(),
             last_webhook_event: status,
             updated_at: new Date().toISOString()
           })
           .eq('email', email.trim().toLowerCase());
-          
+
         if (secondTryError) console.error('❌ Falha na segunda tentativa de atualização:', secondTryError);
       }
 
     } else if (isEventInactive) {
       isActive = false;
       console.log(`❌ [BLOQUEIO] Evento "${status}" reconhecido como INATIVO para ${email}`);
-      
+
       // Se a assinatura foi cancelada ou expirou, removemos o acesso imediato
       // mas mantemos o registro da última data por segurança
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({ 
+        .upsert({
           email: email.toLowerCase(),
           subscription_active: false,
           last_webhook_event: status,
           updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
-        
+
       if (profileError) console.error('Erro ao desativar perfil:', profileError);
     } else {
       // Se for um evento de "lead", "carrinho abandonado" ou outro que não mude o acesso
@@ -297,14 +299,14 @@ function extractJSON(text) {
     let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
     // 2. Se já parecer JSON puro, retorna
-    if ((cleanText.startsWith('{') && cleanText.endsWith('}')) || 
-        (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
+    if ((cleanText.startsWith('{') && cleanText.endsWith('}')) ||
+      (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
       return cleanText;
     }
 
     // 3. Regex para encontrar o primeiro objeto {} ou array []
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    
+
     if (jsonMatch) {
       return jsonMatch[0];
     }
@@ -365,11 +367,11 @@ function getAI() {
   const openRouterKey = process.env.OPENAI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const mistralKey = process.env.MISTRAL_API_KEY;
-  
+
   if (!geminiKey && !openRouterKey && !groqKey && !mistralKey) {
     throw new Error("API_KEY_MISSING");
   }
-  
+
   return {
     gemini: geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null,
     openRouter: openRouterKey ? {
@@ -422,14 +424,14 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
     });
 
     const rawText = await response.text();
-    
+
     if (!response.ok) {
       let errorMsg = rawText;
       try {
         const errorData = JSON.parse(rawText || "{}");
         errorMsg = errorData.error?.message || rawText;
-      } catch (e) {}
-      
+      } catch (e) { }
+
       if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
       throw new Error(errorMsg || `Erro Groq: ${response.status}`);
     }
@@ -472,14 +474,14 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
     });
 
     const rawText = await response.text();
-    
+
     if (!response.ok) {
       let errorMsg = rawText;
       try {
         const errorData = JSON.parse(rawText || "{}");
         errorMsg = errorData.error?.message || rawText;
-      } catch (e) {}
-      
+      } catch (e) { }
+
       if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
       throw new Error(errorMsg || `Erro Mistral: ${response.status}`);
     }
@@ -524,14 +526,14 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
     });
 
     const rawText = await response.text();
-    
+
     if (!response.ok) {
       let errorMsg = rawText;
       try {
         const errorData = JSON.parse(rawText || "{}");
         errorMsg = errorData.error?.message || rawText;
-      } catch (e) {}
-      
+      } catch (e) { }
+
       if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
       throw new Error(errorMsg || `Erro OpenRouter: ${response.status}`);
     }
@@ -562,7 +564,7 @@ async function runWithModelFallback(ai, actionName, payload) {
   // Prioridade 2: Mistral (Reforço de 1 Bilhão de tokens)
   // Prioridade 3: Groq (Pela velocidade quando houver limite disponível)
   let providersToTry = ['gemini', 'mistral', 'groq', 'openrouter'];
-  
+
   if (ai.preferredProvider && providersToTry.includes(ai.preferredProvider)) {
     providersToTry = [ai.preferredProvider, ...providersToTry.filter(p => p !== ai.preferredProvider)];
   }
@@ -603,7 +605,7 @@ async function runWithModelFallback(ai, actionName, payload) {
             if (error.message.includes("429") || error.message.includes("Quota") || error.message.includes("exhausted")) {
               console.warn(`⚠️ Gemini ${model} atingiu limite. Aguardando 60 segundos para resetar...`);
               await sleep(60000);
-              
+
               try {
                 console.log(`[Gemini] Retentando ${actionName} com ${model} após espera...`);
                 if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
@@ -620,7 +622,7 @@ async function runWithModelFallback(ai, actionName, payload) {
               }
             }
             console.warn(`⚠️ Gemini ${model} falhou: ${error.message}.`);
-            continue; 
+            continue;
           }
         }
       }
@@ -630,7 +632,7 @@ async function runWithModelFallback(ai, actionName, payload) {
         for (const model of MISTRAL_MODELS) {
           try {
             console.log(`[Mistral] Tentando ${actionName} com ${model}`);
-            
+
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -643,14 +645,14 @@ async function runWithModelFallback(ai, actionName, payload) {
               for (let i = 0; i < count; i++) {
                 const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
                 Responda APENAS JSON: { "title": "...", "intro": "..." }`;
-                
+
                 const skeletonRes = await callMistral(ai.mistral, skeletonPrompt, true, null, model);
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
                 let fullContent = skeleton.intro + "\n\n";
                 const parts = [
-                  "Conceitos Fundamentais e Doutrina", 
-                  "Desenvolvimento Técnico e Detalhamento", 
+                  "Conceitos Fundamentais e Doutrina",
+                  "Desenvolvimento Técnico e Detalhamento",
                   "Estratégias de Estudo (Ciclos e Memorização)",
                   "Estratégias de Prova (Bancas e Pegadinhas)",
                   "Bizus de Prova, Jurisprudência e Resumo Final"
@@ -660,7 +662,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                   const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
                   FOCO: Máxima profundidade, estratégias práticas para o aluno e Markdown rico.
                   Retorne apenas o texto em Markdown.`;
-                  
+
                   const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
                   fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
                   await sleep(1000);
@@ -685,7 +687,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
                 const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}".
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-                
+
                 let success = false;
                 let retryCount = 0;
                 while (!success && retryCount < 3) {
@@ -738,17 +740,17 @@ async function runWithModelFallback(ai, actionName, payload) {
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             } else {
-              prompt = "Processando ação..."; 
+              prompt = "Processando ação...";
             }
 
             const res = await callMistral(ai.mistral, prompt, isJson, history, model);
             if (isJson) {
               const parsed = JSON.parse(extractJSON(res.text));
-              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar')
                 ? ensureArray(parsed) : parsed;
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
-               return { content: res.text };
+              return { content: res.text };
             }
             return res;
           } catch (error) {
@@ -763,7 +765,7 @@ async function runWithModelFallback(ai, actionName, payload) {
         for (const model of GROQ_MODELS) {
           try {
             console.log(`[Groq] Tentando ${actionName} com ${model}`);
-            
+
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -776,14 +778,14 @@ async function runWithModelFallback(ai, actionName, payload) {
               for (let i = 0; i < count; i++) {
                 const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
                 Responda APENAS JSON: { "title": "...", "intro": "..." }`;
-                
+
                 const skeletonRes = await callGroq(ai.groq, skeletonPrompt, true, null, model);
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
                 let fullContent = skeleton.intro + "\n\n";
                 const parts = [
-                  "Conceitos Fundamentais e Doutrina", 
-                  "Desenvolvimento Técnico e Detalhamento", 
+                  "Conceitos Fundamentais e Doutrina",
+                  "Desenvolvimento Técnico e Detalhamento",
                   "Estratégias de Estudo (Ciclos e Memorização)",
                   "Estratégias de Prova (Bancas e Pegadinhas)",
                   "Bizus de Prova, Jurisprudência e Resumo Final"
@@ -793,10 +795,10 @@ async function runWithModelFallback(ai, actionName, payload) {
                   const contentPrompt = `Você é o Professor Especialista do Bizu. Escreva a parte de "${part}" para a apostila intitulada "${skeleton.title}".
                   FOCO: Máxima profundidade, estratégias práticas para o aluno e Markdown rico.
                   Retorne apenas o texto em Markdown.`;
-                  
+
                   const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
                   fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
-                  await sleep(2000); 
+                  await sleep(2000);
                 }
 
                 allMaterials.push({
@@ -810,7 +812,7 @@ async function runWithModelFallback(ai, actionName, payload) {
               return allMaterials;
             } else if (actionName === 'generateQuiz') {
               const isAcademico = payload.studyType === 'academico';
-              const batchSize = 5; 
+              const batchSize = 5;
               const totalQuestions = Math.min(payload.numberOfQuestions, 100);
               let allQuestions = [];
               const numBatches = Math.ceil(totalQuestions / batchSize);
@@ -822,7 +824,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const batchPrompt = `Gere ${currentBatchSize} questões (${isAcademico ? 'estilo ENEM/Vestibular' : 'estilo Concurso'}) de nível "${payload.difficulty}" sobre "${payload.topic}". 
                 IMPORTANTE: NÃO gere questões sobre o exame em si. Gere questões sobre o CONTEÚDO que cai na prova (ex: se o tema for ENEM, escolha Biologia, História, etc).
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-                
+
                 let success = false;
                 let retryCount = 0;
                 while (!success && retryCount < 3) {
@@ -887,15 +889,15 @@ async function runWithModelFallback(ai, actionName, payload) {
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             }
-            
+
             const res = await callGroq(ai.groq, prompt, isJson, history, model);
             if (isJson) {
               const parsed = JSON.parse(extractJSON(res.text));
-              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar')
                 ? ensureArray(parsed) : parsed;
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
-               return { content: res.text };
+              return { content: res.text };
             }
             return res;
           } catch (error) {
@@ -913,7 +915,7 @@ async function runWithModelFallback(ai, actionName, payload) {
         for (const model of models) {
           try {
             console.log(`[OpenRouter] Tentando ${actionName} com ${model}`);
-            
+
             let prompt = "";
             let isJson = false;
             let history = null;
@@ -932,7 +934,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const batchPrompt = `Gere ${currentBatchSize} questões (${isAcademico ? 'estilo ENEM/Vestibular' : 'estilo Concurso'}) sobre "${payload.topic}" (${payload.difficulty}). 
                 IMPORTANTE: NÃO gere questões sobre o exame em si. Gere questões sobre o CONTEÚDO que cai na prova (ex: se o tema for ENEM, escolha Biologia, História, etc).
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
-                
+
                 const res = await callOpenRouter(ai.openRouter, batchPrompt, true, null, model);
                 const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
                 allQuestions = [...allQuestions, ...batchQuestions];
@@ -985,11 +987,11 @@ async function runWithModelFallback(ai, actionName, payload) {
             const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
             if (isJson) {
               const parsed = JSON.parse(extractJSON(res.text));
-              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar') 
+              return (actionName === 'generateQuiz' || actionName === 'generateMaterials' || actionName === 'updateRadar')
                 ? ensureArray(parsed) : parsed;
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
-               return { content: res.text };
+              return { content: res.text };
             }
             return res;
           } catch (error) {
@@ -1010,7 +1012,7 @@ async function runWithModelFallback(ai, actionName, payload) {
 // --- AÇÕES ---
 
 async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberOfQuestions, studyType }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
@@ -1020,9 +1022,9 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
   const batchSize = 10;
   const totalQuestions = Math.min(numberOfQuestions, 100);
   let allQuestions = [];
-  
+
   const numBatches = Math.ceil(totalQuestions / batchSize);
-  
+
   for (let i = 0; i < numBatches; i++) {
     const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
     if (currentBatchSize <= 0) break;
@@ -1042,7 +1044,7 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
     
     Responda APENAS o JSON Array.
     Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "..."}]`;
-    
+
     let success = false;
     while (!success) {
       try {
@@ -1062,7 +1064,7 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
           console.error(`Erro crítico no lote ${i + 1}:`, err.message);
           if (allQuestions.length > 0) {
             success = true; // Força saída deste lote para retornar o que já temos
-            break; 
+            break;
           }
           throw err;
         }
@@ -1074,7 +1076,7 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
 }
 
 async function handleAskTutor(genAI, modelName, { history, message }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     safetySettings: SAFETY_SETTINGS
@@ -1083,13 +1085,13 @@ async function handleAskTutor(genAI, modelName, { history, message }) {
   const chat = model.startChat({
     history: (history || []).slice(-6)
   });
-  
+
   const result = await chat.sendMessage(message);
   return { text: result.response.text() };
 }
 
 async function handleGenerateMaterials(genAI, modelName, { count, studyType }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
@@ -1107,59 +1109,59 @@ async function handleGenerateMaterials(genAI, modelName, { count, studyType }) {
 }
 
 async function handleGenerateMaterialContent(genAI, modelName, { material, studyType }) {
-  const model = genAI.getGenerativeModel({ 
-    model: modelName, 
+  const model = genAI.getGenerativeModel({
+    model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.4,
       maxOutputTokens: 4000,
     },
-    safetySettings: SAFETY_SETTINGS 
+    safetySettings: SAFETY_SETTINGS
   });
 
   const sections = [
-    { 
-      name: "Título e Introdução", 
+    {
+      name: "Título e Introdução",
       items: [
-        "# [TÍTULO DA APOSTILA]", 
+        "# [TÍTULO DA APOSTILA]",
         "## 1. Introdução e Contextualização",
         "Apresente o tema de forma clara e sua importância absoluta para a aprovação. Liste os tópicos que serão abordados."
-      ] 
+      ]
     },
-    { 
-      name: "Desenvolvimento Teórico Parte 1", 
+    {
+      name: "Desenvolvimento Teórico Parte 1",
       items: [
         "## 2. Teoria Detalhada - Fundamentos",
         "Explique os conceitos base com máxima profundidade técnica. Use listas, negrito e tabelas Markdown para organizar a informação."
-      ] 
+      ]
     },
-    { 
-      name: "Desenvolvimento Teórico Parte 2", 
+    {
+      name: "Desenvolvimento Teórico Parte 2",
       items: [
         "## 3. Aprofundamento e Aplicações",
         "Traga detalhes avançados, exceções à regra, cálculos passo a passo (se o tema envolver matemática) e exemplos práticos reais."
-      ] 
+      ]
     },
-    { 
-      name: "Dicas e Estratégias", 
+    {
+      name: "Dicas e Estratégias",
       items: [
         "## 4. Bizus, Macetes e Memorização",
         "Crie mnemônicos, dicas de 'ouro' para a hora da prova e como o tema costuma ser cobrado pelas bancas (pegadinhas comuns)."
-      ] 
+      ]
     },
-    { 
-      name: "Exercícios e Gabarito", 
+    {
+      name: "Exercícios e Gabarito",
       items: [
         "## 5. Exercícios de Fixação (Nível Médio/Difícil)",
         "Gere pelo menos 5 questões inéditas no estilo múltipla escolha (A, B, C, D, E) sobre o tema.",
         "## 6. Gabarito Comentado",
         "Forneça a resposta correta e explique POR QUE é a correta e por que as outras estão erradas."
-      ] 
+      ]
     }
   ];
 
   let fullContent = "";
-  
+
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
     const prompt = `Você é um Professor de Elite e Autor de Materiais Didáticos para Concursos e Vestibulares. 
@@ -1187,13 +1189,13 @@ async function handleGenerateMaterialContent(genAI, modelName, { material, study
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       fullContent += "\n\n" + text;
-      
+
       // Como o usuário pediu para "gerar um pouco e esperar", vamos aguardar um pouco entre as partes
       // mas apenas se houver mais partes a serem geradas.
       if (i < sections.length - 1) {
-         console.log(`[Material] Parte ${i+1} concluída. Aguardando reset de limite (2s)...`);
-         await sleep(2000); // Reduzido de 60s para 2s para evitar timeout
-       }
+        console.log(`[Material] Parte ${i + 1} concluída. Aguardando reset de limite (2s)...`);
+        await sleep(2000); // Reduzido de 60s para 2s para evitar timeout
+      }
     } catch (err) {
       if (err.message.includes("429") || err.message.includes("Quota")) {
         console.warn(`⚠️ Limite atingido na geração do material. Aguardando 60s para continuar...`);
@@ -1209,8 +1211,8 @@ async function handleGenerateMaterialContent(genAI, modelName, { material, study
 }
 
 async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects, studyType }) {
-  const model = genAI.getGenerativeModel({ 
-    model: modelName, 
+  const model = genAI.getGenerativeModel({
+    model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
     safetySettings: SAFETY_SETTINGS
@@ -1255,7 +1257,7 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
       }
     ]
   }`;
-  
+
   let parsed;
   for (let attempt = 0; attempt < 2; attempt++) {
     const attemptPrompt = attempt === 0
@@ -1282,7 +1284,7 @@ RESTRIÇÕES ADICIONAIS (REFORÇO):
 }
 
 async function handleUpdateRadar(genAI, modelName, { existingTitles: titlesArray, studyType }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
@@ -1318,7 +1320,7 @@ async function handleUpdateRadar(genAI, modelName, { existingTitles: titlesArray
 }
 
 async function handleCreateCustomMaterial(genAI, modelName, { topic, studyType }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: { responseMimeType: "application/json" },
@@ -1336,20 +1338,20 @@ async function handleCreateCustomMaterial(genAI, modelName, { topic, studyType }
     "duration": "Tempo estimado de estudo ou páginas",
     "summary": "Breve resumo técnico/estratégico do que será abordado na apostila completa"
   }`;
-  
+
   const result = await model.generateContent(prompt);
   return JSON.parse(extractJSON(result.response.text()));
 }
 
 async function handleExtendMaterialContent(genAI, modelName, { material, currentContent, studyType }) {
-  const model = genAI.getGenerativeModel({ 
-    model: modelName, 
+  const model = genAI.getGenerativeModel({
+    model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.5,
       maxOutputTokens: 4000,
     },
-    safetySettings: SAFETY_SETTINGS 
+    safetySettings: SAFETY_SETTINGS
   });
 
   const prompt = `Você é um Professor de Elite e Autor de Materiais Didáticos. 
@@ -1379,7 +1381,7 @@ async function handleExtendMaterialContent(genAI, modelName, { material, current
 }
 
 async function handleGenerateStudyMaterials(genAI, modelName, { topic, count }) {
-  const model = genAI.getGenerativeModel({ 
+  const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: BIZU_SYSTEM_PROMPT,
     safetySettings: SAFETY_SETTINGS
@@ -1391,16 +1393,16 @@ async function handleGenerateStudyMaterials(genAI, modelName, { topic, count }) 
   for (let i = 0; i < numMaterials; i++) {
     try {
       console.log(`[StudyMaterials] Gerando material ${i + 1} de ${numMaterials} para "${topic}"...`);
-      
+
       const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
       Responda APENAS JSON: { "title": "...", "intro": "..." }`;
-      
+
       const skeletonResult = await model.generateContent(skeletonPrompt);
       const skeleton = JSON.parse(extractJSON(skeletonResult.response.text()));
 
       // Usamos o handleGenerateMaterialContent para gerar o conteúdo completo com chunking e waits
       const contentResult = await handleGenerateMaterialContent(genAI, modelName, { material: skeleton });
-      
+
       allMaterials.push({
         id: Date.now() + i,
         title: skeleton.title,
@@ -1428,7 +1430,7 @@ async function handleGenerateStudyMaterials(genAI, modelName, { topic, count }) 
 
 app.post('/api/gemini', async (req, res) => {
   const { action, payload } = req.body;
-  
+
   try {
     const ai = getAI();
     const result = await runWithModelFallback(ai, action, payload);
@@ -1441,14 +1443,14 @@ app.post('/api/gemini', async (req, res) => {
 
   } catch (error) {
     console.error(`[Erro API] ${action}:`, error.message);
-    
+
     if (error.message.includes("API_KEY")) {
       return res.status(500).json({ error: "Chave API inválida ou não configurada." });
     }
-    
+
     // Tratamento genérico para erros de JSON parse (comum em IAs instáveis)
     if (error instanceof SyntaxError) {
-       return res.status(500).json({ error: "A IA gerou uma resposta inválida. Tente novamente." });
+      return res.status(500).json({ error: "A IA gerou uma resposta inválida. Tente novamente." });
     }
 
     res.status(503).json({ error: "Serviço de IA indisponível. Tente novamente em alguns segundos." });
