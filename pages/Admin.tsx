@@ -447,7 +447,7 @@ export default function Admin() {
                             {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
                           </span>
                           <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                            ID. {profile.created_at.split('T')[0]}
+                            ID. {profile.created_at ? profile.created_at.split('T')[0] : (profile.updated_at ? new Date(profile.updated_at).toLocaleDateString('pt-BR') : 'Sem data')}
                           </span>
                         </div>
                       </div>
