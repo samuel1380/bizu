@@ -51,6 +51,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [usersPage, setUsersPage] = useState(1);
   const [stats, setStats] = useState({
     totalSales: 0,
     salesToday: 0,
@@ -248,6 +249,17 @@ export default function Admin() {
     };
   });
 
+  const filteredProfiles = profiles.filter(p =>
+    p.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const usersPerPage = 6; // Usando 6 para manter as 2 colunas niveladas (3 linhas de 2).
+  const totalUsersPages = Math.ceil(filteredProfiles.length / usersPerPage);
+  const paginatedProfiles = filteredProfiles.slice(
+    (usersPage - 1) * usersPerPage,
+    usersPage * usersPerPage
+  );
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12 px-4 pt-4 bg-slate-50 dark:bg-slate-900 min-h-screen">
 
@@ -351,7 +363,10 @@ export default function Admin() {
           placeholder={activeTab === 'sales' ? "Buscar por e-mail, evento ou status..." : "Buscar aluno por e-mail..."}
           className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-800 border-2 border-b-4 border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-600 dark:text-slate-300 shadow-sm"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setUsersPage(1); // Retorna à primeira página ao digitar na busca
+          }}
         />
       </div>
 
@@ -431,62 +446,85 @@ export default function Admin() {
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {profiles
-              .filter(p => p.email.toLowerCase().includes(searchTerm.toLowerCase()))
-              .map((profile) => (
-                <div key={profile.email} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col group hover:border-blue-200 dark:hover:border-blue-800 transition-all">
-                  <div className="flex items-start justify-between mb-4 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-b-4 ${profile.subscription_active ? 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800/30' : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
-                        <Users size={24} className={profile.subscription_active ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-lg text-slate-700 dark:text-slate-100 leading-tight truncate max-w-[200px]">{profile.email}</h4>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
-                            {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
-                          </span>
-                          <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                            ID. {profile.created_at ? profile.created_at.split('T')[0] : (profile.updated_at ? new Date(profile.updated_at).toLocaleDateString('pt-BR') : 'Sem data')}
-                          </span>
-                        </div>
-                      </div>
+            {paginatedProfiles.map((profile) => (
+              <div key={profile.email} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col group hover:border-blue-200 dark:hover:border-blue-800 transition-all">
+                <div className="flex items-start justify-between mb-4 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-b-4 ${profile.subscription_active ? 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800/30' : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
+                      <Users size={24} className={profile.subscription_active ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} />
                     </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600">
-                        {profile.last_webhook_event || 'SEM WEBHOOK'}
-                      </span>
+                    <div>
+                      <h4 className="font-black text-lg text-slate-700 dark:text-slate-100 leading-tight truncate max-w-[200px]">{profile.email}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
+                          {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                          ID. {profile.created_at ? profile.created_at.split('T')[0] : (profile.updated_at ? new Date(profile.updated_at).toLocaleDateString('pt-BR') : 'Sem data')}
+                        </span>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
-                    <div className="flex flex-col items-center">
-                      <Clock size={16} className="text-blue-500 mb-1" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Último Acesso</span>
-                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                        {profile.last_active_at ? new Date(profile.last_active_at).toLocaleDateString() : '--'}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center border-l border-r border-slate-200 dark:border-slate-700">
-                      <TrendingUp size={16} className="text-purple-500 mb-1" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Total Logins</span>
-                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">{profile.login_count || 1}x</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <Zap size={16} className="text-yellow-500 mb-1" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Tempo Total</span>
-                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">{formatTimeSpent(profile.total_time_spent)}</span>
-                    </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600">
+                      {profile.last_webhook_event || 'SEM WEBHOOK'}
+                    </span>
                   </div>
                 </div>
-              ))}
 
-            {profiles.length === 0 && (
+                <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
+                  <div className="flex flex-col items-center">
+                    <Clock size={16} className="text-blue-500 mb-1" />
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Último Acesso</span>
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300">
+                      {profile.last_active_at ? new Date(profile.last_active_at).toLocaleDateString() : '--'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-center border-l border-r border-slate-200 dark:border-slate-700">
+                    <TrendingUp size={16} className="text-purple-500 mb-1" />
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Total Logins</span>
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300">{profile.login_count || 1}x</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <Zap size={16} className="text-yellow-500 mb-1" />
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Tempo Total</span>
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300">{formatTimeSpent(profile.total_time_spent)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {filteredProfiles.length === 0 && (
               <div className="md:col-span-2 bg-white dark:bg-slate-800 p-12 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center">
-                <p className="text-slate-400 dark:text-slate-500 font-bold italic">Nenhum aluno cadastrado no sistema ainda.</p>
+                <p className="text-slate-400 dark:text-slate-500 font-bold italic">Nenhum aluno cadastrado/encontrado no sistema.</p>
               </div>
             )}
           </div>
+
+          {/* Navegação/Paginação de Alunos */}
+          {totalUsersPages > 1 && (
+            <div className="flex items-center justify-between mt-6 p-4 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-sm mx-auto w-full md:w-2/3">
+              <button
+                onClick={() => setUsersPage(prev => Math.max(prev - 1, 1))}
+                disabled={usersPage === 1}
+                className="px-6 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-black text-sm rounded-xl disabled:opacity-30 transition-all hover:bg-slate-200 dark:hover:bg-slate-600 uppercase border-b-4 border-slate-200 dark:border-slate-600 disabled:border-b-0 disabled:translate-y-[4px]"
+              >
+                Anterior
+              </button>
+
+              <span className="font-bold text-xs md:text-sm text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                Página <span className="text-blue-500 font-black">{usersPage}</span> de {totalUsersPages}
+              </span>
+
+              <button
+                onClick={() => setUsersPage(prev => Math.min(prev + 1, totalUsersPages))}
+                disabled={usersPage === totalUsersPages}
+                className="px-6 py-2 bg-blue-500 text-white font-black text-sm rounded-xl disabled:opacity-30 transition-all hover:bg-blue-600 border-b-4 border-blue-700 disabled:border-b-0 disabled:translate-y-[4px] uppercase"
+              >
+                Próximo
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
