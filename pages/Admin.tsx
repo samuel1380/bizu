@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { 
-  TrendingUp, 
-  Users, 
-  ShoppingCart, 
+import {
+  TrendingUp,
+  Users,
+  ShoppingCart,
   CheckCircle,
   Mail,
   Zap,
@@ -20,6 +20,9 @@ import {
   Eye
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area
+} from 'recharts';
 
 interface SalesEvent {
   id: string;
@@ -35,6 +38,10 @@ interface Profile {
   last_webhook_event: string;
   updated_at: string;
   created_at: string;
+  last_login?: string;
+  last_active_at?: string;
+  total_time_spent?: number;
+  login_count?: number;
 }
 
 export default function Admin() {
@@ -104,10 +111,10 @@ export default function Admin() {
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const isSuccess = (type: string) => [
-      'order_completed', 
-      'approved', 
-      'subscription_renewed', 
-      'subscription_active', 
+      'order_completed',
+      'approved',
+      'subscription_renewed',
+      'subscription_active',
       'access_granted',
       'payment_confirmed',
       'invoice_paid',
@@ -120,7 +127,7 @@ export default function Admin() {
       'cart_abandoned',
       'lead'
     ].includes(type.toLowerCase()) || type.toLowerCase().includes('abandoned') || type.toLowerCase().includes('abandonado');
-    
+
     let totalSales = 0;
     let salesToday = 0;
     let salesMonth = 0;
@@ -128,10 +135,10 @@ export default function Admin() {
     let revenueMonth = 0;
     let abandonedCarts = 0;
     let abandonedToday = 0;
-    
+
     data.forEach(event => {
       const eventDate = new Date(event.created_at);
-      
+
       // Tentar extrair o preço real do payload da Hubla
       let price = 0;
       if (event.raw_data?.data?.price) {
@@ -147,7 +154,7 @@ export default function Admin() {
       if (isSuccess(event.event_type)) {
         totalSales++;
         revenueTotal += price;
-        
+
         if (eventDate >= today) {
           salesToday++;
         }
@@ -166,7 +173,7 @@ export default function Admin() {
     });
 
     const leads = new Set(data.map(e => e.email)).size;
-    
+
     setStats({
       totalSales,
       salesToday,
@@ -183,7 +190,7 @@ export default function Admin() {
     const success = ['order_completed', 'approved', 'subscription_renewed', 'subscription_active', 'purchase_approved', 'payment_confirmed'];
     const danger = ['subscription_cancelled', 'refunded', 'expired', 'chargeback', 'payment_failed'];
     const warning = ['lead_abandoned_cart', 'abandoned_cart', 'cart_abandoned', 'lead'];
-    
+
     const lowerType = type.toLowerCase();
     if (success.includes(lowerType)) return 'bg-green-500 text-white border-green-700';
     if (danger.includes(lowerType)) return 'bg-red-500 text-white border-red-700';
@@ -202,8 +209,8 @@ export default function Admin() {
     return type.replace(/_/g, ' ').toUpperCase();
   };
 
-  const filteredEvents = events.filter(e => 
-    e.email.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredEvents = events.filter(e =>
+    e.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.event_type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -216,37 +223,62 @@ export default function Admin() {
     </div>
   );
 
+  const formatTimeSpent = (seconds?: number) => {
+    if (!seconds) return '0 min';
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins} min`;
+  };
+
+  // Prepara dados pro gráfico
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
+  });
+
+  const chartData = last7Days.map(dateStr => {
+    const dayEvents = events.filter(e => e.created_at.startsWith(dateStr));
+    const daySales = dayEvents.filter(e => getEventBadge(e.event_type).includes('green')).length;
+    const dateObj = new Date(dateStr);
+    return {
+      name: `${dateObj.getDate()}/${dateObj.getMonth() + 1}`,
+      Vendas: daySales
+    };
+  });
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12 px-4 pt-4 bg-slate-50 dark:bg-slate-900 min-h-screen">
-      
+
       {/* Header com Visual do App */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-            <Link to="/" className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black mb-2 hover:underline">
-              <ArrowLeft size={18} /> VOLTAR AO APP
-            </Link>
-            <h1 className="text-3xl font-black text-slate-700 dark:text-slate-100 tracking-tight">
-                Dashboard de Controle ⚙️
-            </h1>
-            <p className="text-slate-400 dark:text-slate-500 font-bold">Gerencie vendas e alunos do Bizu</p>
+          <Link to="/" className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black mb-2 hover:underline">
+            <ArrowLeft size={18} /> VOLTAR AO APP
+          </Link>
+          <h1 className="text-3xl font-black text-slate-700 dark:text-slate-100 tracking-tight">
+            Dashboard de Controle ⚙️
+          </h1>
+          <p className="text-slate-400 dark:text-slate-500 font-bold">Gerencie vendas e alunos do Bizu</p>
         </div>
-        
+
         <div className="flex gap-3">
-            <button onClick={fetchAllData} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl border-b-4 border-blue-700 hover:bg-blue-600 transition-all font-black text-sm">
-                ATUALIZAR TUDO
-            </button>
+          <button onClick={fetchAllData} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl border-b-4 border-blue-700 hover:bg-blue-600 transition-all font-black text-sm">
+            ATUALIZAR TUDO
+          </button>
         </div>
       </div>
 
       {/* Tabs de Navegação */}
       <div className="flex gap-2 p-1 bg-slate-200 dark:bg-slate-800 rounded-2xl w-fit">
-        <button 
+        <button
           onClick={() => setActiveTab('sales')}
           className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'sales' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
         >
           VENDAS & EVENTOS
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('users')}
           className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'users' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
         >
@@ -264,39 +296,58 @@ export default function Admin() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col justify-center">
-            <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Resumo de Conversão</h3>
-                <div className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Tempo Real</div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Resumo de Conversão</h3>
+            <div className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Tempo Real</div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-3xl font-black text-slate-700 dark:text-slate-100">{stats.totalLeads}</p>
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Total Leads</p>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                    <p className="text-3xl font-black text-slate-700 dark:text-slate-100">{stats.totalLeads}</p>
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Total Leads</p>
-                </div>
-                <div>
-                    <p className="text-3xl font-black text-blue-600 dark:text-blue-400">{stats.totalSales}</p>
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Vendas</p>
-                </div>
-                <div>
-                    <p className="text-3xl font-black text-orange-500 dark:text-orange-400">{stats.abandonedCarts}</p>
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Abandonos</p>
-                </div>
+            <div>
+              <p className="text-3xl font-black text-blue-600 dark:text-blue-400">{stats.totalSales}</p>
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Vendas</p>
             </div>
+            <div>
+              <p className="text-3xl font-black text-orange-500 dark:text-orange-400">{stats.abandonedCarts}</p>
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Abandonos</p>
+            </div>
+          </div>
+          <div className="mt-8 h-48 w-full border-t-2 border-slate-100 dark:border-slate-700 pt-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.3} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  itemStyle={{ color: '#0f172a', fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="Vendas" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col justify-center text-center">
-            <div className="mx-auto mb-4 bg-purple-100 dark:bg-purple-900/30 w-16 h-16 rounded-full flex items-center justify-center border-2 border-purple-200 dark:border-purple-800/50">
-                <Users className="text-purple-600 dark:text-purple-400" size={32} />
-            </div>
-            <h3 className="text-4xl font-black text-slate-700 dark:text-slate-100">{stats.activeSubscriptions}</h3>
-            <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-sm">Alunos Ativos</p>
+          <div className="mx-auto mb-4 bg-purple-100 dark:bg-purple-900/30 w-16 h-16 rounded-full flex items-center justify-center border-2 border-purple-200 dark:border-purple-800/50">
+            <Users className="text-purple-600 dark:text-purple-400" size={32} />
+          </div>
+          <h3 className="text-4xl font-black text-slate-700 dark:text-slate-100">{stats.activeSubscriptions}</h3>
+          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-sm">Alunos Ativos</p>
         </div>
       </div>
 
       {/* Barra de Busca e Filtros */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={20} />
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder={activeTab === 'sales' ? "Buscar por e-mail, evento ou status..." : "Buscar aluno por e-mail..."}
           className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-800 border-2 border-b-4 border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-600 dark:text-slate-300 shadow-sm"
           value={searchTerm}
@@ -307,14 +358,14 @@ export default function Admin() {
       {activeTab === 'sales' ? (
         <div className="space-y-4">
           <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 flex items-center gap-2 px-2">
-              <Clock className="text-blue-500" />
-              Histórico Detalhado
+            <Clock className="text-blue-500" />
+            Histórico Detalhado
           </h3>
 
           <div className="space-y-3">
             {filteredEvents.map((event) => (
               <div key={event.id} className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 border-b-4 overflow-hidden transition-all group">
-                <div 
+                <div
                   className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                   onClick={() => setSelectedEvent(selectedEvent === event.id ? null : event.id)}
                 >
@@ -350,7 +401,7 @@ export default function Admin() {
                   <div className="p-4 bg-slate-900 text-blue-300 font-mono text-xs overflow-x-auto border-t-2 border-slate-200 dark:border-slate-700">
                     <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
                       <span className="text-slate-500 font-bold uppercase tracking-widest">DADOS BRUTOS DO WEBHOOK</span>
-                      <button 
+                      <button
                         onClick={() => console.log(event.raw_data)}
                         className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded transition-colors"
                       >
@@ -375,41 +426,60 @@ export default function Admin() {
       ) : (
         <div className="space-y-4">
           <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 flex items-center gap-2 px-2">
-              <Users className="text-blue-500" />
-              Lista Geral de Alunos
+            <Users className="text-blue-500" />
+            Lista Geral de Alunos
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {profiles
               .filter(p => p.email.toLowerCase().includes(searchTerm.toLowerCase()))
               .map((profile) => (
-              <div key={profile.email} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 border-b-4 flex items-center justify-between group hover:border-blue-200 dark:hover:border-blue-800 transition-all">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${profile.subscription_active ? 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800/30' : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
-                    <Users size={20} className={profile.subscription_active ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-slate-700 dark:text-slate-100 leading-tight">{profile.email}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
-                        {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                        <Clock size={10} />
-                        {new Date(profile.updated_at).toLocaleDateString('pt-BR')}
+                <div key={profile.email} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 flex flex-col group hover:border-blue-200 dark:hover:border-blue-800 transition-all">
+                  <div className="flex items-start justify-between mb-4 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-2 border-b-4 ${profile.subscription_active ? 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800/30' : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
+                        <Users size={24} className={profile.subscription_active ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-lg text-slate-700 dark:text-slate-100 leading-tight truncate max-w-[200px]">{profile.email}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${profile.subscription_active ? 'bg-green-500 text-white' : 'bg-slate-400 text-white'}`}>
+                            {profile.subscription_active ? 'ATIVO' : 'INATIVO'}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                            ID. {profile.created_at.split('T')[0]}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600">
+                        {profile.last_webhook_event || 'SEM WEBHOOK'}
                       </span>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
+                    <div className="flex flex-col items-center">
+                      <Clock size={16} className="text-blue-500 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Último Acesso</span>
+                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">
+                        {profile.last_active_at ? new Date(profile.last_active_at).toLocaleDateString() : '--'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center border-l border-r border-slate-200 dark:border-slate-700">
+                      <TrendingUp size={16} className="text-purple-500 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Total Logins</span>
+                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">{profile.login_count || 1}x</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <Zap size={16} className="text-yellow-500 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Tempo Total</span>
+                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">{formatTimeSpent(profile.total_time_spent)}</span>
+                    </div>
+                  </div>
                 </div>
-                
-                <div className="text-right">
-                   <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-tighter mb-1">Último Evento</p>
-                   <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">
-                     {profile.last_webhook_event || 'N/A'}
-                   </span>
-                </div>
-              </div>
-            ))}
+              ))}
 
             {profiles.length === 0 && (
               <div className="md:col-span-2 bg-white dark:bg-slate-800 p-12 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center">
@@ -426,11 +496,11 @@ export default function Admin() {
 function StatCard({ title, value, icon, color, borderColor, borderBottomColor }: any) {
   return (
     <div className={`bg-white dark:bg-slate-800 p-5 rounded-3xl border-2 ${borderColor} ${borderBottomColor} transition-all hover:scale-[1.02]`}>
-        <div className={`mb-3 ${color} w-10 h-10 rounded-xl flex items-center justify-center border-2 ${borderColor}`}>
-            {React.cloneElement(icon, { size: 20, strokeWidth: 2.5 })}
-        </div>
-        <h3 className="text-xl md:text-2xl font-black text-slate-700 dark:text-slate-100 leading-tight">{value}</h3>
-        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">{title}</p>
+      <div className={`mb-3 ${color} w-10 h-10 rounded-xl flex items-center justify-center border-2 ${borderColor}`}>
+        {React.cloneElement(icon, { size: 20, strokeWidth: 2.5 })}
+      </div>
+      <h3 className="text-xl md:text-2xl font-black text-slate-700 dark:text-slate-100 leading-tight">{value}</h3>
+      <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">{title}</p>
     </div>
   );
 }

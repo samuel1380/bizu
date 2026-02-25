@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BookOpen, GraduationCap, LayoutDashboard, MessageSquareText, Menu, X, Zap, Calendar, Sun, Moon, LogOut } from 'lucide-react';
 import { useTheme } from '../services/ThemeContext';
@@ -20,6 +20,71 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'TREINAR', path: '/quiz', icon: <Zap size={20} strokeWidth={2.5} /> },
     { name: 'MENTOR', path: '/mentor', icon: <MessageSquareText size={20} strokeWidth={2.5} /> },
   ];
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    let isActive = true;
+
+    const initLoginSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.email) return;
+
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('login_count, total_time_spent')
+          .eq('email', session.user.email.toLowerCase())
+          .maybeSingle();
+
+        if (profile) {
+          await supabase
+            .from('profiles')
+            .update({
+              last_login: new Date().toISOString(),
+              last_active_at: new Date().toISOString(),
+              login_count: (profile.login_count || 0) + 1
+            })
+            .eq('email', session.user.email.toLowerCase());
+        }
+      } catch (err) {
+        console.error('Erro ao inicializar sessão:', err);
+      }
+    };
+
+    const updatePresence = async () => {
+      if (!isActive) return;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.email) return;
+
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('total_time_spent')
+          .eq('email', session.user.email.toLowerCase())
+          .maybeSingle();
+
+        if (profile) {
+          const currentTotal = profile.total_time_spent || 0;
+          await supabase
+            .from('profiles')
+            .update({
+              last_active_at: new Date().toISOString(),
+              total_time_spent: currentTotal + 60
+            })
+            .eq('email', session.user.email.toLowerCase());
+        }
+      } catch (err) { }
+    };
+
+    initLoginSession();
+    intervalId = setInterval(updatePresence, 60000); // 1 minuto de heartbeat
+
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+    };
+  }, []);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -43,18 +108,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 bizu
               </span>
             </Link>
-            
+
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center space-x-6 ml-8">
               {navItems.map((item) => (
                 <Link
                   key={item.name}
                   to={item.path}
-                  className={`flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-extrabold tracking-widest uppercase transition-all duration-200 ${
-                    isActive(item.path)
+                  className={`flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-extrabold tracking-widest uppercase transition-all duration-200 ${isActive(item.path)
                       ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-2 border-blue-200 dark:border-blue-800'
                       : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-500 dark:hover:text-slate-400 border-2 border-transparent'
-                  }`}
+                    }`}
                 >
                   {item.icon}
                   {item.name}
@@ -107,11 +171,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   key={item.name}
                   to={item.path}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-4 rounded-2xl text-sm font-bold tracking-wider uppercase transition-all ${
-                    isActive(item.path)
+                  className={`flex items-center gap-3 px-4 py-4 rounded-2xl text-sm font-bold tracking-wider uppercase transition-all ${isActive(item.path)
                       ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-2 border-blue-200 dark:border-blue-800'
                       : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
+                    }`}
                 >
                   {item.icon}
                   {item.name}
