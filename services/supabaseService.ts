@@ -4,10 +4,14 @@ import { ChatMessage, StudyMaterial, StudyRoutine } from '../types';
 export const supabaseService = {
   // Stats
   async getUserStats() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { totalQuestions: 0, totalCorrect: 0, lastStudyDate: '', currentStreak: 0 };
+
+    const statsId = `${user.id}_stats`;
     const { data, error } = await supabase
       .from('stats')
       .select('*')
-      .eq('id', 'user_stats')
+      .eq('id', statsId)
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
@@ -42,10 +46,11 @@ export const supabaseService = {
     // 2. Update Stats
     const stats = await this.getUserStats();
     const today = new Date().toISOString().split('T')[0];
-    
+    const statsId = `${user.id}_stats`;
+
     const updatedStats = {
       ...stats,
-      id: 'user_stats',
+      id: statsId,
       user_id: user.id,
       totalQuestions: stats.totalQuestions + total,
       totalCorrect: stats.totalCorrect + score,
@@ -55,7 +60,7 @@ export const supabaseService = {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayString = yesterday.toISOString().split('T')[0];
-      
+
       if (stats.lastStudyDate === yesterdayString) {
         updatedStats.currentStreak += 1;
       } else {
@@ -94,7 +99,7 @@ export const supabaseService = {
       .select('*')
       .eq('user_id', user.id)
       .order('timestamp', { ascending: true });
-    
+
     if (error) {
       console.error('Erro ao buscar histórico de chat:', error);
       return [];
@@ -124,7 +129,7 @@ export const supabaseService = {
       .from('materials')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('updatedAt', { ascending: false });
     if (error) {
       console.error('Erro ao buscar materiais:', error);
       return [];
@@ -159,13 +164,13 @@ export const supabaseService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return undefined;
 
+    const routineId = `${user.id}_routine`;
     const { data, error } = await supabase
       .from('routine')
       .select('*')
-      .eq('user_id', user.id)
-      .eq('id', 'user_routine')
+      .eq('id', routineId)
       .single();
-    
+
     if (error && error.code !== 'PGRST116') {
       console.error('Erro ao buscar rotina:', error);
     }
@@ -175,20 +180,21 @@ export const supabaseService = {
   async saveStudyRoutine(routine: StudyRoutine) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const routineId = `${user.id}_routine`;
     const { error } = await supabase
       .from('routine')
-      .upsert({ ...routine, id: 'user_routine', user_id: user.id });
+      .upsert({ ...routine, id: routineId, user_id: user.id });
     if (error) console.error('Erro ao salvar rotina:', error);
   },
 
   async deleteStudyRoutine() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const routineId = `${user.id}_routine`;
     const { error } = await supabase
       .from('routine')
       .delete()
-      .eq('user_id', user.id)
-      .eq('id', 'user_routine');
+      .eq('id', routineId);
     if (error) console.error('Erro ao deletar rotina:', error);
   }
 };
