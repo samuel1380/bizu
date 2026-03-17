@@ -1653,6 +1653,179 @@ app.post('/api/gemini', async (req, res) => {
   }
 });
 
+// --- DIAGNÓSTICO E FIX DA TABELA MATERIALS ---
+app.get('/api/fix-materials-table', async (req, res) => {
+  try {
+    const results = [];
+
+    // 1. Verificar se a tabela existe
+    const { data: tableCheck, error: tableErr } = await supabase.rpc('to_regclass', { name: 'public.materials' }).maybeSingle();
+    
+    // Alternativa: tentar um select básico
+    const { data: testSelect, error: selectErr } = await supabase.from('materials').select('id').limit(1);
+    
+    if (selectErr && selectErr.message.includes('does not exist')) {
+      // Tabela não existe - criar
+      results.push('⚠️ Tabela materials NÃO existe! Criando...');
+      
+      const { error: createErr } = await supabase.rpc('exec_sql', {
+        sql: `
+          CREATE TABLE IF NOT EXISTS public.materials (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            category TEXT,
+            type TEXT DEFAULT 'PDF',
+            duration TEXT,
+            "updatedAt" TEXT,
+            summary TEXT,
+            content TEXT,
+            user_id UUID REFERENCES auth.users(id),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          
+          ALTER TABLE public.materials ENABLE ROW LEVEL SECURITY;
+          
+          CREATE POLICY "Users can view own materials" ON public.materials
+            FOR SELECT USING (auth.uid() = user_id);
+          CREATE POLICY "Users can insert own materials" ON public.materials
+            FOR INSERT WITH CHECK (auth.uid() = user_id);
+          CREATE POLICY "Users can update own materials" ON public.materials
+            FOR UPDATE USING (auth.uid() = user_id);
+          CREATE POLICY "Users can delete own materials" ON public.materials
+            FOR DELETE USING (auth.uid() = user_id);
+          CREATE POLICY "Service role full access materials" ON public.materials
+            FOR ALL USING (true);
+        `
+      });
+      
+      if (createErr) {
+        results.push(`❌ Erro ao criar tabela via RPC: ${createErr.message}`);
+        results.push('📋 Execute o SQL manualmente no Supabase Dashboard!');
+      } else {
+        results.push('✅ Tabela materials criada com sucesso!');
+      }
+    } else if (selectErr) {
+      results.push(`⚠️ Erro ao testar tabela: ${selectErr.message} (code: ${selectErr.code})`);
+      
+      // Se o erro for 400, pode ser problema de colunas
+      if (selectErr.code === '42P01') {
+        results.push('❌ Tabela materials NÃO existe no banco!');
+      }
+    } else {
+      results.push('✅ Tabela materials existe e está acessível.');
+    }
+
+    // 2. Verificar colunas existentes
+    const { data: columns, error: colErr } = await supabase
+      .from('information_schema.columns')
+      .select('column_name, data_type, is_nullable')
+      .eq('table_name', 'materials')
+      .eq('table_schema', 'public');
+    
+    if (colErr) {
+      // Alternativa via query direto
+      results.push(`⚠️ Não consegui listar colunas via information_schema: ${colErr.message}`);
+    } else {
+      results.push(`📊 Colunas encontradas: ${JSON.stringify(columns)}`);
+    }
+
+    // 3. Tentar um insert/upsert de teste pra ver o erro exato
+    const testMaterial = {
+      id: 'test_diagnostic_' + Date.now(),
+      title: 'Teste Diagnóstico',
+      category: 'Teste',
+      type: 'PDF',
+      duration: '1 min',
+      updatedAt: new Date().toISOString(),
+      summary: 'Material de teste para diagnóstico',
+      content: 'Conteúdo de teste',
+      user_id: '00000000-0000-0000-0000-000000000000'
+    };
+
+    const { error: insertErr } = await supabase.from('materials').insert(testMaterial);
+    if (insertErr) {
+      results.push(`⚠️ Erro ao inserir material de teste: ${insertErr.message} (code: ${insertErr.code}, details: ${insertErr.details})`);
+      
+      // Se o erro mencionar coluna, a gente sabe qual falta
+      if (insertErr.message.includes('column')) {
+        results.push(`🔍 Provável coluna faltando! Detalhes: ${insertErr.message}`);
+      }
+    } else {
+      results.push('✅ Insert de teste funcionou!');
+      // Limpar o teste
+      await supabase.from('materials').delete().eq('id', testMaterial.id);
+      results.push('🧹 Material de teste limpo.');
+    }
+
+    // 4. SQL para o usuário executar manualmente se necessário
+    const fixSQL = `
+-- ==========================================
+-- SQL PARA CRIAR/CORRIGIR TABELA MATERIALS
+-- Execute no Supabase Dashboard > SQL Editor
+-- ==========================================
+
+-- Criar tabela (se não existir)
+CREATE TABLE IF NOT EXISTS public.materials (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  category TEXT,
+  type TEXT DEFAULT 'PDF',
+  duration TEXT,
+  "updatedAt" TEXT,
+  summary TEXT,
+  content TEXT,
+  user_id UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Adicionar colunas faltantes (ignora se já existir)
+DO $$ BEGIN
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS title TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS category TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'PDF';
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS duration TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS "updatedAt" TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS summary TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS content TEXT;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS user_id UUID;
+  ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Habilitar RLS
+ALTER TABLE public.materials ENABLE ROW LEVEL SECURITY;
+
+-- Políticas RLS (drop e recria para evitar conflitos)
+DROP POLICY IF EXISTS "Users can view own materials" ON public.materials;
+DROP POLICY IF EXISTS "Users can insert own materials" ON public.materials;
+DROP POLICY IF EXISTS "Users can update own materials" ON public.materials;
+DROP POLICY IF EXISTS "Users can delete own materials" ON public.materials;
+DROP POLICY IF EXISTS "Service role full access materials" ON public.materials;
+
+CREATE POLICY "Users can view own materials" ON public.materials
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own materials" ON public.materials
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own materials" ON public.materials
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own materials" ON public.materials
+  FOR DELETE USING (auth.uid() = user_id);
+    `.trim();
+
+    res.json({
+      status: 'diagnostic_complete',
+      results,
+      fix_sql: fixSQL
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: err.message,
+      fix_sql: 'Execute o SQL no Supabase Dashboard > SQL Editor'
+    });
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
