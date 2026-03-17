@@ -426,8 +426,9 @@ const Materials: React.FC = () => {
   const categories = ['Todos', ...Array.from(new Set(materials.map(m => m.category)))];
 
   const filteredMaterials = materials.filter(m => {
-    const matchesSearch = m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (m.summary && m.summary.toLowerCase().includes(searchTerm.toLowerCase()));
+    const titleMatches = m.title ? m.title.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    const summaryMatches = m.summary ? m.summary.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    const matchesSearch = titleMatches || summaryMatches;
     const matchesCategory = selectedCategory === 'Todos' || m.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });

@@ -874,6 +874,8 @@ async function runWithModelFallback(ai, actionName, payload) {
               prompt = `Você é um Especialista em Concursos. Crie um material estratégico sobre: "${payload.topic}".
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
+            } else if (actionName === 'extractYoutubeContent') {
+              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
             } else {
               prompt = "Processando ação...";
             }
@@ -1023,6 +1025,10 @@ async function runWithModelFallback(ai, actionName, payload) {
               prompt = `Você é um Especialista em ${isAcademico ? 'Educação' : 'Concursos'}. Crie um material estratégico sobre: "${payload.topic}".
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
+            } else if (actionName === 'extractYoutubeContent') {
+              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
+            } else {
+              prompt = "Processando ação...";
             }
 
             const res = await callGroq(ai.groq, prompt, isJson, history, model);
@@ -1117,6 +1123,10 @@ async function runWithModelFallback(ai, actionName, payload) {
               prompt = `Você é um Especialista em ${isAcademico ? 'Educação' : 'Concursos'}. Crie um material estratégico sobre: "${payload.topic}".
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
+            } else if (actionName === 'extractYoutubeContent') {
+              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
+            } else {
+              prompt = "Processando ação...";
             }
 
             const res = await callOpenRouter(ai.openRouter, prompt, isJson, history, model);
