@@ -165,11 +165,13 @@ const Materials: React.FC = () => {
 
     setExtractingVideo(true);
     setExtractProgress('Conectando ao YouTube...');
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
 
     try {
       // Simular progresso
-      const progressTimer = setInterval(() => {
+      progressTimer = setInterval(() => {
         setExtractProgress(prev => {
+          if (!prev) return prev;
           if (prev.includes('Conectando')) return '📝 Extraindo transcrição do vídeo...';
           if (prev.includes('transcrição')) return '🤖 IA processando o conteúdo...';
           if (prev.includes('processando')) return '📚 Montando sua apostila...';
@@ -181,7 +183,6 @@ const Materials: React.FC = () => {
       const studyType = routine?.studyType || 'concurso';
 
       const newMaterial = await extractFromYoutube(youtubeUrl.trim(), studyType);
-      clearInterval(progressTimer);
 
       await saveMaterial(newMaterial);
       setMaterials(prev => [newMaterial, ...prev]);
@@ -194,6 +195,7 @@ const Materials: React.FC = () => {
       console.error('Erro ao extrair vídeo:', error);
       alert(error.message || 'Erro ao extrair conteúdo do vídeo. Verifique se o vídeo possui legendas ativadas.');
     } finally {
+      if (progressTimer) clearInterval(progressTimer);
       setExtractingVideo(false);
       setExtractProgress('');
     }
