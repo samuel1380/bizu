@@ -692,25 +692,68 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 
 // --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
 async function runWithModelFallback(ai, actionName, payload) {
-  // --- PRÉ-PROCESSAMENTO: Buscar transcrição do YouTube ANTES de escolher a IA ---
-  // A transcrição NÃO precisa de IA, é pura extração de dados do YouTube
+  // --- PRÉ-PROCESSAMENTO: Buscar info do YouTube ANTES de escolher a IA ---
   if (actionName === 'extractYoutubeContent' && !payload._transcriptFetched) {
-    console.log('[YouTube] Buscando transcrição antes de escolher IA...');
-    const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(payload.youtubeUrl);
+    console.log('[YouTube] Buscando informações do vídeo...');
     
-    // Limitar a transcrição para não estourar tokens
-    const maxChars = 12000;
-    const trimmedTranscript = transcript.length > maxChars 
-      ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
-      : transcript;
+    try {
+      const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(payload.youtubeUrl);
+      
+      // Limitar a transcrição para não estourar tokens
+      const maxChars = 12000;
+      const trimmedTranscript = transcript.length > maxChars 
+        ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
+        : transcript;
 
-    // Injetar a transcrição no payload para que QUALQUER IA possa processar
-    payload._transcriptFetched = true;
-    payload._videoId = videoId;
-    payload._videoTitle = videoTitle;
-    payload._transcript = trimmedTranscript;
-    payload._lang = lang;
-    console.log(`[YouTube] Transcrição pronta: "${videoTitle}" (${trimmedTranscript.length} chars, ${lang})`);
+      // Modo COM TRANSCRIÇÃO — material mais preciso
+      payload._transcriptFetched = true;
+      payload._hasTranscript = true;
+      payload._videoId = videoId;
+      payload._videoTitle = videoTitle;
+      payload._transcript = trimmedTranscript;
+      payload._lang = lang;
+      console.log(`[YouTube] ✅ Transcrição encontrada: "${videoTitle}" (${trimmedTranscript.length} chars, ${lang})`);
+    } catch (transcriptError) {
+      console.warn(`[YouTube] ⚠️ Transcrição não disponível: ${transcriptError.message}`);
+      
+      // Modo SEM TRANSCRIÇÃO — pega só o título e manda pra IA gerar baseado no assunto
+      const videoId = extractVideoId(payload.youtubeUrl);
+      if (!videoId) throw new Error('URL do YouTube inválida. Verifique o link e tente novamente.');
+
+      // Buscar pelo menos o título do vídeo
+      let videoTitle = 'Vídeo do YouTube';
+      try {
+        const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+          }
+        });
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const titleMatch = html.match(/<title>([^<]*)<\/title>/);
+          if (titleMatch) videoTitle = titleMatch[1].replace(' - YouTube', '').trim();
+          
+          // Tentar pegar a descrição do vídeo também
+          const descMatch = html.match(/"shortDescription":"([^"]{0,2000})"/);
+          if (descMatch) {
+            payload._videoDescription = descMatch[1]
+              .replace(/\\n/g, '\n')
+              .replace(/\\"/g, '"')
+              .substring(0, 1500);
+          }
+        }
+      } catch(e) {
+        console.warn('[YouTube] Não conseguiu nem o título:', e.message);
+      }
+
+      payload._transcriptFetched = true;
+      payload._hasTranscript = false;
+      payload._videoId = videoId;
+      payload._videoTitle = videoTitle;
+      payload._transcript = null;
+      console.log(`[YouTube] 📝 Modo sem transcrição: "${videoTitle}" — IA vai gerar baseado no assunto`);
+    }
   }
 
   // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
@@ -897,18 +940,29 @@ async function runWithModelFallback(ai, actionName, payload) {
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
               const isAcademico = payload.studyType === 'academico';
-              prompt = `Você é o BizuBot, um Professor Especialista de Elite.
-              Transforme a transcrição deste vídeo em uma APOSTILA DE ESTUDO completa em Markdown.
-              TÍTULO: "${payload._videoTitle}"
-              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
-              DIRETRIZES: Organize em tópicos (H1, H2, H3), adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
-              
-              TRANSCRIÇÃO:
-              ---
-              ${payload._transcript}
-              ---
-              
-              Gere a apostila completa em Markdown.`;
+              if (payload._hasTranscript && payload._transcript) {
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                Transforme a transcrição deste vídeo em APOSTILA DE ESTUDO completa em Markdown.
+                TÍTULO: "${payload._videoTitle}"
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+                
+                TRANSCRIÇÃO:
+                ---
+                ${payload._transcript}
+                ---
+                
+                Gere a apostila completa em Markdown.`;
+              } else {
+                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                
+                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
+                Use Markdown rico e profissional.`;
+              }
             } else {
               prompt = "Processando ação...";
             }
@@ -1070,18 +1124,29 @@ async function runWithModelFallback(ai, actionName, payload) {
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
               const isAcademico = payload.studyType === 'academico';
-              prompt = `Você é o BizuBot, Professor Especialista de Elite.
-              Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
-              TÍTULO: "${payload._videoTitle}"
-              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
-              DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
-              
-              TRANSCRIÇÃO:
-              ---
-              ${payload._transcript}
-              ---
-              
-              Gere a apostila completa em Markdown.`;
+              if (payload._hasTranscript && payload._transcript) {
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
+                TÍTULO: "${payload._videoTitle}"
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+                
+                TRANSCRIÇÃO:
+                ---
+                ${payload._transcript}
+                ---
+                
+                Gere a apostila completa em Markdown.`;
+              } else {
+                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                
+                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
+                Use Markdown rico e profissional.`;
+              }
             } else {
               prompt = "Processando ação...";
             }
@@ -1190,18 +1255,29 @@ async function runWithModelFallback(ai, actionName, payload) {
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
               const isAcademico = payload.studyType === 'academico';
-              prompt = `Você é o BizuBot, Professor Especialista de Elite.
-              Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
-              TÍTULO: "${payload._videoTitle}"
-              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
-              DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
-              
-              TRANSCRIÇÃO:
-              ---
-              ${payload._transcript}
-              ---
-              
-              Gere a apostila completa em Markdown.`;
+              if (payload._hasTranscript && payload._transcript) {
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
+                TÍTULO: "${payload._videoTitle}"
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+                
+                TRANSCRIÇÃO:
+                ---
+                ${payload._transcript}
+                ---
+                
+                Gere a apostila completa em Markdown.`;
+              } else {
+                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                prompt = `Você é o BizuBot, Professor Especialista de Elite.
+                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+                
+                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
+                Use Markdown rico e profissional.`;
+              }
             } else {
               prompt = "Processando ação...";
             }
@@ -1612,15 +1688,8 @@ async function handleExtendMaterialContent(genAI, modelName, { material, current
   }
 }
 
-async function handleExtractYoutubeContent(genAI, modelName, { youtubeUrl, studyType }) {
-  // 1. Pegar a transcrição do vídeo
-  const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(youtubeUrl);
-
-  // 2. Limitar a transcrição para não estourar tokens (máximo ~12000 chars)
-  const maxChars = 12000;
-  const trimmedTranscript = transcript.length > maxChars 
-    ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
-    : transcript;
+async function handleExtractYoutubeContent(genAI, modelName, payload) {
+  const { _videoTitle, _videoId, _transcript, _hasTranscript, _videoDescription, studyType } = payload;
 
   const model = genAI.getGenerativeModel({
     model: modelName,
@@ -1629,47 +1698,79 @@ async function handleExtractYoutubeContent(genAI, modelName, { youtubeUrl, study
   });
 
   const isAcademico = studyType === 'academico';
+  let prompt;
 
-  console.log(`[YouTube] Gerando material a partir do vídeo: "${videoTitle}"`);
-
-  // 3. Gerar material de estudo a partir da transcrição
-  const prompt = `Você é o BizuBot, um Professor Especialista de Elite.
+  if (_hasTranscript && _transcript) {
+    // MODO 1: COM TRANSCRIÇÃO — material baseado no que foi dito no vídeo
+    console.log(`[YouTube/Gemini] Gerando apostila a partir da TRANSCRIÇÃO: "${_videoTitle}"`);
+    prompt = `Você é o BizuBot, um Professor Especialista de Elite.
   
-  O aluno assistiu a uma videoaula e eu vou te passar a TRANSCRIÇÃO COMPLETA desse vídeo.
-  Sua missão é transformar todo o conteúdo dessa videoaula em uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada.
-  
-  TÍTULO DO VÍDEO: "${videoTitle}"
-  PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
-  
-  DIRETRIZES OBRIGATÓRIAS:
-  1. **EXTRAIA TODO O CONTEÚDO**: Cubra TODOS os tópicos, conceitos, fórmulas, datas, nomes, leis, exemplos e explicações mencionados no vídeo.
-  2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3), separando cada assunto abordado.
-  3. **ENRIQUEÇA**: Adicione detalhes extras que complementem o que foi falado, como:
-     - Macetes de memorização ("Bizu")
-     - Tabelas comparativas quando aplicável
-     - Destaques com blockquotes para pontos-chave
-     - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
-  4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas baseadas no conteúdo do vídeo, com gabarito comentado.
-  5. **FORMATO**: Use Markdown rico e profissional. O resultado deve parecer uma apostila de cursinho preparatório de alto nível.
-  6. **NÃO INVENTE**: Baseie-se fielmente na transcrição. Não adicione informações falsas, especialmente sobre leis, jurisprudências ou datas.
-  
-  TRANSCRIÇÃO DO VÍDEO:
-  ---
-  ${trimmedTranscript}
-  ---
-  
-  Agora gere a apostila completa em Markdown.`;
+    O aluno assistiu a uma videoaula e eu vou te passar a TRANSCRIÇÃO COMPLETA desse vídeo.
+    Sua missão é transformar todo o conteúdo dessa videoaula em uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada.
+    
+    TÍTULO DO VÍDEO: "${_videoTitle}"
+    PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
+    
+    DIRETRIZES OBRIGATÓRIAS:
+    1. **EXTRAIA TODO O CONTEÚDO**: Cubra TODOS os tópicos, conceitos, fórmulas, datas, nomes, leis, exemplos e explicações mencionados no vídeo.
+    2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3), separando cada assunto abordado.
+    3. **ENRIQUEÇA**: Adicione detalhes extras que complementem o que foi falado, como:
+       - Macetes de memorização ("Bizu")
+       - Tabelas comparativas quando aplicável
+       - Destaques com blockquotes para pontos-chave
+       - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
+    4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas baseadas no conteúdo do vídeo, com gabarito comentado.
+    5. **FORMATO**: Use Markdown rico e profissional. O resultado deve parecer uma apostila de cursinho preparatório de alto nível.
+    6. **NÃO INVENTE**: Baseie-se fielmente na transcrição.
+    
+    TRANSCRIÇÃO DO VÍDEO:
+    ---
+    ${_transcript}
+    ---
+    
+    Agora gere a apostila completa em Markdown.`;
+  } else {
+    // MODO 2: SEM TRANSCRIÇÃO — IA gera material baseado no título/assunto do vídeo
+    console.log(`[YouTube/Gemini] Gerando apostila baseada no TÍTULO: "${_videoTitle}"`);
+    const descPart = _videoDescription ? `\n    DESCRIÇÃO DO VÍDEO: "${_videoDescription}"` : '';
+    prompt = `Você é o BizuBot, um Professor Especialista de Elite.
+    
+    O aluno assistiu a uma videoaula com o seguinte título: "${_videoTitle}"${descPart}
+    URL do vídeo: https://www.youtube.com/watch?v=${_videoId}
+    
+    Infelizmente não conseguimos extrair a transcrição deste vídeo, mas baseado no título e na descrição,
+    sua missão é gerar uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada sobre o ASSUNTO abordado neste vídeo.
+    
+    PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
+    
+    DIRETRIZES OBRIGATÓRIAS:
+    1. **CUBRA O ASSUNTO COMPLETO**: Baseado no título, identifique o tema principal e cubra TUDO sobre ele.
+    2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3).
+    3. **ENRIQUEÇA**: Inclua:
+       - Teoria completa e detalhada
+       - Macetes de memorização ("Bizu")
+       - Tabelas comparativas
+       - Destaques com blockquotes para pontos-chave
+       - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
+    4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas com gabarito comentado.
+    5. **FORMATO**: Use Markdown rico e profissional.
+    6. **PROFUNDIDADE**: Escreva como se fosse a MELHOR apostila sobre esse assunto.
+    
+    Agora gere a apostila completa em Markdown.`;
+  }
 
   const result = await model.generateContent(prompt);
   const content = result.response.text();
 
   return {
-    title: videoTitle,
+    title: _videoTitle || 'Vídeo sem título',
     content,
     category: 'YouTube',
     type: 'VIDEO',
-    videoId,
-    summary: `Material extraído do vídeo "${videoTitle}" — Conteúdo completo transformado em apostila pelo BizuBot.`
+    videoId: _videoId,
+    summary: _hasTranscript 
+      ? `Material extraído do vídeo "${_videoTitle}" — Conteúdo completo transformado em apostila pelo BizuBot.`
+      : `Apostila gerada sobre o tema do vídeo "${_videoTitle}" — Material criado pelo BizuBot baseado no assunto.`
   };
 }
 
