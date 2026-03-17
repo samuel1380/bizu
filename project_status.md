@@ -28,10 +28,12 @@ Este documento serve como um mapa de tudo o que já foi implementado, configurad
 ### 3. Funcionalidades Principais Modificadas Recentemente
 - **Tratamento Anti-Crash (`supabaseService.ts`)**: Adicionamos blocos completos de `try/catch` em **TODAS** as chamadas do Supabase. Isso impede o React de dar crash (tela preta/branca) quando o Supabase retorna erros 400 ou 406 (ex: tabela não encontrada, foreign key errada). Assim, a requisição pode falhar silenciosamente no console, mas a UI não quebra.
 - **Extração de Vídeo do YouTube (`handleExtractYoutubeContent`)**: 
-  - Backend recebe a URL, extrai a transcrição usando uma função pura (`fetchYoutubeTranscript`) sem dependências extras.
-  - A transcrição é passada para a IA com o `BIZU_SYSTEM_PROMPT`.
+  - A transcrição é buscada **ANTES** de escolher a IA (não depende de nenhuma IA para essa etapa).
+  - A transcrição é passada para **QUALQUER IA disponível** (Gemini → Mistral → Groq → OpenRouter) via sistema de fallback.
+  - Se o Gemini estiver no limite de uso, outra IA assume automaticamente.
   - O conteúdo gerado é devolvido em Markdown rico, estruturado como uma apostila.
-  - Frontend tem um botão "EXTRAIR DE VÍDEO", que abra um modal para inserir a URL.
+  - Frontend tem um botão "EXTRAIR DE VÍDEO" que abre um modal para inserir a URL.
+  - Null-checks adicionados para prevenir crash quando a IA retorna dados incompletos.
 
 ## ⚠️ Problemas Conhecidos e Observações Importantes
 - **Erros 400/406 no Console**: Requisições de rede feitas pelo client do Supabase que encontram dados vazios (406 no `.single()`) ou problemas de schema (400) **sempre** ficarão marcadas de vermelho no console do navegador Chrome. Isso é um comportamento padrão do browser e *não significa necessariamente um crash no app*, desde que estejam em um `try/catch` adequado (como estão agora).

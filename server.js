@@ -1746,7 +1746,18 @@ app.post('/api/gemini', async (req, res) => {
       return res.status(500).json({ error: "A IA gerou uma resposta inválida. Tente novamente." });
     }
 
-    res.status(503).json({ error: "Serviço de IA indisponível. Tente novamente em alguns segundos." });
+    // Erros específicos do YouTube — passar a mensagem real pro frontend
+    if (error.message.includes('YouTube') || error.message.includes('legendas') || error.message.includes('transcrição') || error.message.includes('vídeo')) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Erros de rate limit
+    if (error.message.includes('429') || error.message.includes('Quota') || error.message.includes('exhausted') || error.message.includes('atingiram o limite')) {
+      return res.status(429).json({ error: "Todas as IAs atingiram o limite de uso temporário. Tente novamente em 1-2 minutos." });
+    }
+
+    // Erro genérico — mas agora mostra a mensagem REAL
+    res.status(503).json({ error: error.message || "Serviço de IA indisponível. Tente novamente em alguns segundos." });
   }
 });
 
