@@ -128,13 +128,17 @@ export const supabaseService = {
     const { data, error } = await supabase
       .from('materials')
       .select('*')
-      .eq('user_id', user.id)
-      .order('updatedAt', { ascending: false });
+      .eq('user_id', user.id);
+      
     if (error) {
       console.error('Erro ao buscar materiais:', error);
       return [];
     }
-    return data || [];
+    
+    // Sort localmente por updatedAt (evita erro 400 Bad Request se a coluna exata no supabase não for indexável/nomeada ok)
+    const materials = data || [];
+    materials.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    return materials;
   },
 
   async saveMaterial(material: StudyMaterial) {
