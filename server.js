@@ -692,6 +692,27 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
 
 // --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
 async function runWithModelFallback(ai, actionName, payload) {
+  // --- PRÉ-PROCESSAMENTO: Buscar transcrição do YouTube ANTES de escolher a IA ---
+  // A transcrição NÃO precisa de IA, é pura extração de dados do YouTube
+  if (actionName === 'extractYoutubeContent' && !payload._transcriptFetched) {
+    console.log('[YouTube] Buscando transcrição antes de escolher IA...');
+    const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(payload.youtubeUrl);
+    
+    // Limitar a transcrição para não estourar tokens
+    const maxChars = 12000;
+    const trimmedTranscript = transcript.length > maxChars 
+      ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
+      : transcript;
+
+    // Injetar a transcrição no payload para que QUALQUER IA possa processar
+    payload._transcriptFetched = true;
+    payload._videoId = videoId;
+    payload._videoTitle = videoTitle;
+    payload._transcript = trimmedTranscript;
+    payload._lang = lang;
+    console.log(`[YouTube] Transcrição pronta: "${videoTitle}" (${trimmedTranscript.length} chars, ${lang})`);
+  }
+
   // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
   // Prioridade 1: Gemini (Pelo limite massivo de tokens e estabilidade)
   // Prioridade 2: Mistral (Reforço de 1 Bilhão de tokens)
@@ -875,7 +896,19 @@ async function runWithModelFallback(ai, actionName, payload) {
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
-              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
+              const isAcademico = payload.studyType === 'academico';
+              prompt = `Você é o BizuBot, um Professor Especialista de Elite.
+              Transforme a transcrição deste vídeo em uma APOSTILA DE ESTUDO completa em Markdown.
+              TÍTULO: "${payload._videoTitle}"
+              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+              DIRETRIZES: Organize em tópicos (H1, H2, H3), adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+              
+              TRANSCRIÇÃO:
+              ---
+              ${payload._transcript}
+              ---
+              
+              Gere a apostila completa em Markdown.`;
             } else {
               prompt = "Processando ação...";
             }
@@ -888,6 +921,16 @@ async function runWithModelFallback(ai, actionName, payload) {
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
               return { content: res.text };
+            }
+            if (actionName === 'extractYoutubeContent') {
+              return {
+                title: payload._videoTitle || 'Vídeo sem título',
+                content: res.text,
+                category: 'YouTube',
+                type: 'VIDEO',
+                videoId: payload._videoId,
+                summary: `Material extraído do vídeo "${payload._videoTitle}" — Gerado via Mistral.`
+              };
             }
             return res;
           } catch (error) {
@@ -1026,7 +1069,19 @@ async function runWithModelFallback(ai, actionName, payload) {
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
-              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
+              const isAcademico = payload.studyType === 'academico';
+              prompt = `Você é o BizuBot, Professor Especialista de Elite.
+              Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
+              TÍTULO: "${payload._videoTitle}"
+              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+              DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+              
+              TRANSCRIÇÃO:
+              ---
+              ${payload._transcript}
+              ---
+              
+              Gere a apostila completa em Markdown.`;
             } else {
               prompt = "Processando ação...";
             }
@@ -1039,6 +1094,16 @@ async function runWithModelFallback(ai, actionName, payload) {
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
               return { content: res.text };
+            }
+            if (actionName === 'extractYoutubeContent') {
+              return {
+                title: payload._videoTitle || 'Vídeo sem título',
+                content: res.text,
+                category: 'YouTube',
+                type: 'VIDEO',
+                videoId: payload._videoId,
+                summary: `Material extraído do vídeo "${payload._videoTitle}" — Gerado via Groq.`
+              };
             }
             return res;
           } catch (error) {
@@ -1124,7 +1189,19 @@ async function runWithModelFallback(ai, actionName, payload) {
               JSON Object: { "title": "...", "category": "...", "type": "PDF", "duration": "...", "summary": "..." }`;
               isJson = true;
             } else if (actionName === 'extractYoutubeContent') {
-              throw new Error("extractYoutubeContent suportado apenas pelo Gemini.");
+              const isAcademico = payload.studyType === 'academico';
+              prompt = `Você é o BizuBot, Professor Especialista de Elite.
+              Transforme esta transcrição de vídeo em APOSTILA DE ESTUDO completa em Markdown.
+              TÍTULO: "${payload._videoTitle}"
+              PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
+              DIRETRIZES: Organize em tópicos, adicione macetes, tabelas, destaques e 5 exercícios com gabarito.
+              
+              TRANSCRIÇÃO:
+              ---
+              ${payload._transcript}
+              ---
+              
+              Gere a apostila completa em Markdown.`;
             } else {
               prompt = "Processando ação...";
             }
@@ -1137,6 +1214,16 @@ async function runWithModelFallback(ai, actionName, payload) {
             }
             if (actionName === 'generateMaterialContent' || actionName === 'extendMaterialContent') {
               return { content: res.text };
+            }
+            if (actionName === 'extractYoutubeContent') {
+              return {
+                title: payload._videoTitle || 'Vídeo sem título',
+                content: res.text,
+                category: 'YouTube',
+                type: 'VIDEO',
+                videoId: payload._videoId,
+                summary: `Material extraído do vídeo "${payload._videoTitle}" — Gerado via OpenRouter.`
+              };
             }
             return res;
           } catch (error) {
