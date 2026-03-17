@@ -716,12 +716,30 @@ async function runWithModelFallback(ai, actionName, payload) {
     } catch (transcriptError) {
       console.warn(`[YouTube] ⚠️ Transcrição não disponível: ${transcriptError.message}`);
       
-      // Modo SEM TRANSCRIÇÃO — pega só o título e manda pra IA gerar baseado no assunto
+      // Modo SEM TRANSCRIÇÃO — coleta TODOS os metadados possíveis do vídeo
       const videoId = extractVideoId(payload.youtubeUrl);
       if (!videoId) throw new Error('URL do YouTube inválida. Verifique o link e tente novamente.');
 
-      // Buscar pelo menos o título do vídeo
-      let videoTitle = 'Vídeo do YouTube';
+      let videoTitle = '';
+      let videoDescription = '';
+      let channelName = '';
+      let videoTags = '';
+
+      // ============ MÉTODO 1: API oEmbed do YouTube (mais confiável pra título) ============
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const oembedRes = await fetch(oembedUrl);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          videoTitle = oembedData.title || '';
+          channelName = oembedData.author_name || '';
+          console.log(`[YouTube/oEmbed] Título: "${videoTitle}", Canal: "${channelName}"`);
+        }
+      } catch(e) {
+        console.warn('[YouTube] oEmbed falhou:', e.message);
+      }
+
+      // ============ MÉTODO 2: Scraping do HTML do YouTube (pra descrição, tags e fallback do título) ============
       try {
         const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
           headers: {
@@ -731,28 +749,70 @@ async function runWithModelFallback(ai, actionName, payload) {
         });
         if (pageRes.ok) {
           const html = await pageRes.text();
-          const titleMatch = html.match(/<title>([^<]*)<\/title>/);
-          if (titleMatch) videoTitle = titleMatch[1].replace(' - YouTube', '').trim();
           
-          // Tentar pegar a descrição do vídeo também
-          const descMatch = html.match(/"shortDescription":"([^"]{0,2000})"/);
+          // Fallback do título se oEmbed falhou
+          if (!videoTitle) {
+            const titleMatch = html.match(/<title>([^<]*)<\/title>/);
+            if (titleMatch) videoTitle = titleMatch[1].replace(' - YouTube', '').trim();
+          }
+
+          // Pegar a descrição do vídeo (shortDescription é mais confiável)
+          const descMatch = html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
           if (descMatch) {
-            payload._videoDescription = descMatch[1]
+            videoDescription = descMatch[1]
               .replace(/\\n/g, '\n')
               .replace(/\\"/g, '"')
-              .substring(0, 1500);
+              .replace(/\\\\/g, '\\')
+              .substring(0, 2000);
+          }
+
+          // Pegar tags/keywords do vídeo
+          const keywordsMatch = html.match(/<meta name="keywords" content="([^"]*)">/);
+          if (keywordsMatch) {
+            videoTags = keywordsMatch[1];
+          }
+
+          // Pegar o nome do canal se ainda não tiver
+          if (!channelName) {
+            const channelMatch = html.match(/"ownerChannelName":"([^"]*)"/);
+            if (channelMatch) channelName = channelMatch[1];
+          }
+
+          // Tentar pegar categorias do vídeo
+          const categoryMatch = html.match(/"category":"([^"]*)"/);
+          if (categoryMatch) {
+            payload._videoCategory = categoryMatch[1];
           }
         }
       } catch(e) {
-        console.warn('[YouTube] Não conseguiu nem o título:', e.message);
+        console.warn('[YouTube] Scraping do HTML falhou:', e.message);
       }
+
+      // Se NADA funcionou, usar um título genérico
+      if (!videoTitle) videoTitle = 'Vídeo do YouTube';
+
+      // Montar uma descrição rica pra IA
+      let fullContext = '';
+      if (videoTitle) fullContext += `TÍTULO DO VÍDEO: "${videoTitle}"\n`;
+      if (channelName) fullContext += `CANAL/PROFESSOR: ${channelName}\n`;
+      if (videoTags) fullContext += `PALAVRAS-CHAVE: ${videoTags}\n`;
+      if (payload._videoCategory) fullContext += `CATEGORIA: ${payload._videoCategory}\n`;
+      if (videoDescription) fullContext += `DESCRIÇÃO DO VÍDEO:\n${videoDescription}\n`;
 
       payload._transcriptFetched = true;
       payload._hasTranscript = false;
       payload._videoId = videoId;
       payload._videoTitle = videoTitle;
       payload._transcript = null;
-      console.log(`[YouTube] 📝 Modo sem transcrição: "${videoTitle}" — IA vai gerar baseado no assunto`);
+      payload._videoDescription = videoDescription;
+      payload._channelName = channelName;
+      payload._videoTags = videoTags;
+      payload._fullContext = fullContext;
+      console.log(`[YouTube] 📝 Dados coletados SEM transcrição:`);
+      console.log(`  → Título: "${videoTitle}"`);
+      console.log(`  → Canal: "${channelName}"`);
+      console.log(`  → Tags: "${videoTags}"`);
+      console.log(`  → Descrição: ${videoDescription.length} chars`);
     }
   }
 
@@ -954,12 +1014,17 @@ async function runWithModelFallback(ai, actionName, payload) {
                 
                 Gere a apostila completa em Markdown.`;
               } else {
-                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                const contextData = payload._fullContext || `TÍTULO: "${payload._videoTitle}"`;
                 prompt = `Você é o BizuBot, Professor Especialista de Elite.
-                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                
+                ===== DADOS DO VÍDEO =====
+                ${contextData}
+                ==========================
+                
+                🚨 REGRA: A apostila DEVE ser sobre o EXATO assunto do título acima. NÃO mude de assunto.
                 PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
                 
-                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Gere uma APOSTILA DE ESTUDO completa sobre "${payload._videoTitle}".
                 Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
                 Use Markdown rico e profissional.`;
               }
@@ -1138,12 +1203,17 @@ async function runWithModelFallback(ai, actionName, payload) {
                 
                 Gere a apostila completa em Markdown.`;
               } else {
-                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                const contextData = payload._fullContext || `TÍTULO: "${payload._videoTitle}"`;
                 prompt = `Você é o BizuBot, Professor Especialista de Elite.
-                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                
+                ===== DADOS DO VÍDEO =====
+                ${contextData}
+                ==========================
+                
+                🚨 REGRA: A apostila DEVE ser sobre o EXATO assunto do título acima. NÃO mude de assunto.
                 PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
                 
-                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Gere uma APOSTILA DE ESTUDO completa sobre "${payload._videoTitle}".
                 Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
                 Use Markdown rico e profissional.`;
               }
@@ -1269,12 +1339,17 @@ async function runWithModelFallback(ai, actionName, payload) {
                 
                 Gere a apostila completa em Markdown.`;
               } else {
-                const descPart = payload._videoDescription ? `\nDESCRIÇÃO: "${payload._videoDescription}"` : '';
+                const contextData = payload._fullContext || `TÍTULO: "${payload._videoTitle}"`;
                 prompt = `Você é o BizuBot, Professor Especialista de Elite.
-                O aluno assistiu a videoaula: "${payload._videoTitle}"${descPart}
+                
+                ===== DADOS DO VÍDEO =====
+                ${contextData}
+                ==========================
+                
+                🚨 REGRA: A apostila DEVE ser sobre o EXATO assunto do título acima. NÃO mude de assunto.
                 PERFIL: ${isAcademico ? 'ENEM / Vestibular' : 'Concurso Público'}
                 
-                Gere uma APOSTILA DE ESTUDO completa e extremamente detalhada sobre o ASSUNTO deste vídeo.
+                Gere uma APOSTILA DE ESTUDO completa sobre "${payload._videoTitle}".
                 Inclua: teoria completa, macetes, tabelas, destaques "CAI EM PROVA" e 5 exercícios com gabarito.
                 Use Markdown rico e profissional.`;
               }
@@ -1730,33 +1805,33 @@ async function handleExtractYoutubeContent(genAI, modelName, payload) {
     
     Agora gere a apostila completa em Markdown.`;
   } else {
-    // MODO 2: SEM TRANSCRIÇÃO — IA gera material baseado no título/assunto do vídeo
-    console.log(`[YouTube/Gemini] Gerando apostila baseada no TÍTULO: "${_videoTitle}"`);
-    const descPart = _videoDescription ? `\n    DESCRIÇÃO DO VÍDEO: "${_videoDescription}"` : '';
+    // MODO 2: SEM TRANSCRIÇÃO — IA gera material baseado nos metadados coletados do vídeo
+    console.log(`[YouTube/Gemini] Gerando apostila baseada nos METADADOS: "${_videoTitle}"`);
+    const contextData = payload._fullContext || `TÍTULO: "${_videoTitle}"`;
     prompt = `Você é o BizuBot, um Professor Especialista de Elite.
     
-    O aluno assistiu a uma videoaula com o seguinte título: "${_videoTitle}"${descPart}
-    URL do vídeo: https://www.youtube.com/watch?v=${_videoId}
+    O aluno assistiu a uma videoaula do YouTube e precisa de uma apostila sobre o EXATO assunto abordado.
     
-    Infelizmente não conseguimos extrair a transcrição deste vídeo, mas baseado no título e na descrição,
-    sua missão é gerar uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada sobre o ASSUNTO abordado neste vídeo.
+    ===== DADOS DO VÍDEO =====
+    ${contextData}
+    ==========================
+    
+    🚨 REGRA CRÍTICA: Gere o material EXCLUSIVAMENTE sobre o assunto indicado no título e descrição do vídeo.
+    Se o título diz "Matemática Básica", a apostila DEVE ser sobre Matemática Básica.
+    Se o título diz "Direito Constitucional", a apostila DEVE ser sobre Direito Constitucional.
+    NÃO invente outro assunto. SIGA O TÍTULO DO VÍDEO.
     
     PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
     
     DIRETRIZES OBRIGATÓRIAS:
-    1. **CUBRA O ASSUNTO COMPLETO**: Baseado no título, identifique o tema principal e cubra TUDO sobre ele.
-    2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3).
-    3. **ENRIQUEÇA**: Inclua:
-       - Teoria completa e detalhada
-       - Macetes de memorização ("Bizu")
-       - Tabelas comparativas
-       - Destaques com blockquotes para pontos-chave
-       - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
-    4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas com gabarito comentado.
-    5. **FORMATO**: Use Markdown rico e profissional.
-    6. **PROFUNDIDADE**: Escreva como se fosse a MELHOR apostila sobre esse assunto.
+    1. **ASSUNTO CORRETO**: O tema da apostila DEVE corresponder ao título do vídeo. Não mude de assunto.
+    2. **CUBRA O ASSUNTO COMPLETO**: Teoria aprofundada com exemplos práticos.
+    3. **ORGANIZE EM TÓPICOS**: Estrutura clara com títulos (H1, H2, H3).
+    4. **ENRIQUEÇA**: Macetes ("Bizu"), tabelas comparativas, destaques "⚠️ CAI EM PROVA".
+    5. **EXERCÍCIOS**: 5 questões objetivas com gabarito comentado.
+    6. **FORMATO**: Markdown rico e profissional. Nível de cursinho preparatório.
     
-    Agora gere a apostila completa em Markdown.`;
+    Agora gere a apostila completa em Markdown sobre "${_videoTitle}".`;
   }
 
   const result = await model.generateContent(prompt);
