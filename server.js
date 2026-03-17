@@ -372,6 +372,129 @@ function countDistinctRoutineSubjects(routine) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// --- YOUTUBE TRANSCRIPT EXTRACTOR ---
+function extractVideoId(url) {
+  if (!url) return null;
+  // Suporta: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, youtube.com/shorts/ID
+  const patterns = [
+    /(?:youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+    /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+async function fetchYoutubeTranscript(videoUrl) {
+  const videoId = extractVideoId(videoUrl);
+  if (!videoId) throw new Error('URL do YouTube inválida. Verifique o link e tente novamente.');
+
+  console.log(`[YouTube] Buscando transcrição do vídeo: ${videoId}`);
+
+  // 1. Pegar a página do vídeo para extrair metadados
+  const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+    }
+  });
+
+  if (!pageRes.ok) throw new Error('Não foi possível acessar o vídeo do YouTube.');
+  const pageHtml = await pageRes.text();
+
+  // Extrair título do vídeo
+  const titleMatch = pageHtml.match(/<title>([^<]*)<\/title>/);
+  const videoTitle = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : 'Vídeo sem título';
+
+  // 2. Extrair captions/legendas do playerCaptionsTracklistRenderer
+  const captionsMatch = pageHtml.match(/"captions":\s*(\{"playerCaptionsTracklistRenderer":\{[^}]*"captionTracks":\[.*?\]\})/);
+  
+  if (!captionsMatch) {
+    // Fallback: tentar extrair do timedtext API diretamente
+    console.log('[YouTube] Captions não encontradas no HTML, tentando API direta...');
+    
+    // Tenta buscar legendas automáticas em português e inglês
+    const langs = ['pt', 'pt-BR', 'en', 'a.pt', 'a.en'];
+    for (const lang of langs) {
+      try {
+        const apiUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`;
+        const ttRes = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        if (ttRes.ok) {
+          const ttData = await ttRes.json();
+          if (ttData.events && ttData.events.length > 0) {
+            const transcript = ttData.events
+              .filter(e => e.segs)
+              .map(e => e.segs.map(s => s.utf8 || '').join(''))
+              .join(' ')
+              .replace(/\n/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (transcript.length > 50) {
+              return { videoId, videoTitle, transcript, lang };
+            }
+          }
+        }
+      } catch(e) { continue; }
+    }
+
+    throw new Error('Este vídeo não possui legendas/transcrição disponíveis. Tente um vídeo que tenha legendas ativadas.');
+  }
+
+  // 3. Parsear as tracks de legendas
+  let captionsData;
+  try {
+    // Extrair o JSON completo das captions
+    const fullCaptionsStr = pageHtml.match(/"captions":(\{.*?\}),"videoDetails/s);
+    if (fullCaptionsStr) {
+      captionsData = JSON.parse(fullCaptionsStr[1]);
+    }
+  } catch(e) {
+    console.warn('[YouTube] Erro ao parsear JSON de captions:', e.message);
+  }
+
+  if (!captionsData?.playerCaptionsTracklistRenderer?.captionTracks?.length) {
+    throw new Error('Legendas encontradas mas não foi possível processar. Tente outro vídeo.');
+  }
+
+  const tracks = captionsData.playerCaptionsTracklistRenderer.captionTracks;
+  
+  // Prioridade: pt-BR > pt > en > primeiro disponível
+  const preferredLangs = ['pt-BR', 'pt', 'en'];
+  let selectedTrack = null;
+  for (const lang of preferredLangs) {
+    selectedTrack = tracks.find(t => t.languageCode === lang);
+    if (selectedTrack) break;
+  }
+  if (!selectedTrack) selectedTrack = tracks[0];
+
+  // 4. Baixar a transcrição
+  const transcriptUrl = selectedTrack.baseUrl + '&fmt=json3';
+  const transcriptRes = await fetch(transcriptUrl);
+  if (!transcriptRes.ok) throw new Error('Erro ao baixar transcrição do vídeo.');
+  
+  const transcriptData = await transcriptRes.json();
+  const transcript = transcriptData.events
+    .filter(e => e.segs)
+    .map(e => e.segs.map(s => s.utf8 || '').join(''))
+    .join(' ')
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (transcript.length < 50) {
+    throw new Error('A transcrição do vídeo é muito curta. Tente um vídeo com mais conteúdo.');
+  }
+
+  console.log(`[YouTube] Transcrição capturada: ${transcript.length} chars, idioma: ${selectedTrack.languageCode}`);
+  return { videoId, videoTitle, transcript, lang: selectedTrack.languageCode };
+}
+
 function getAI() {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   const openRouterKey = process.env.OPENAI_API_KEY;
@@ -611,6 +734,7 @@ async function runWithModelFallback(ai, actionName, payload) {
             if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, model, payload);
             if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
             if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
+            if (actionName === 'extractYoutubeContent') return await handleExtractYoutubeContent(ai.gemini, model, payload);
           } catch (error) {
             if (error.message.includes("429") || error.message.includes("Quota") || error.message.includes("exhausted")) {
               console.warn(`⚠️ Gemini ${model} atingiu limite. Aguardando 60 segundos para resetar...`);
@@ -627,6 +751,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, model, payload);
                 if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
                 if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
+                if (actionName === 'extractYoutubeContent') return await handleExtractYoutubeContent(ai.gemini, model, payload);
               } catch (retryError) {
                 console.warn(`⚠️ Gemini ${model} falhou novamente após espera: ${retryError.message}.`);
               }
@@ -1388,6 +1513,67 @@ async function handleExtendMaterialContent(genAI, modelName, { material, current
     console.error("Erro ao estender material:", err.message);
     throw err;
   }
+}
+
+async function handleExtractYoutubeContent(genAI, modelName, { youtubeUrl, studyType }) {
+  // 1. Pegar a transcrição do vídeo
+  const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(youtubeUrl);
+
+  // 2. Limitar a transcrição para não estourar tokens (máximo ~12000 chars)
+  const maxChars = 12000;
+  const trimmedTranscript = transcript.length > maxChars 
+    ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
+    : transcript;
+
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: BIZU_SYSTEM_PROMPT,
+    safetySettings: SAFETY_SETTINGS
+  });
+
+  const isAcademico = studyType === 'academico';
+
+  console.log(`[YouTube] Gerando material a partir do vídeo: "${videoTitle}"`);
+
+  // 3. Gerar material de estudo a partir da transcrição
+  const prompt = `Você é o BizuBot, um Professor Especialista de Elite.
+  
+  O aluno assistiu a uma videoaula e eu vou te passar a TRANSCRIÇÃO COMPLETA desse vídeo.
+  Sua missão é transformar todo o conteúdo dessa videoaula em uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada.
+  
+  TÍTULO DO VÍDEO: "${videoTitle}"
+  PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
+  
+  DIRETRIZES OBRIGATÓRIAS:
+  1. **EXTRAIA TODO O CONTEÚDO**: Cubra TODOS os tópicos, conceitos, fórmulas, datas, nomes, leis, exemplos e explicações mencionados no vídeo.
+  2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3), separando cada assunto abordado.
+  3. **ENRIQUEÇA**: Adicione detalhes extras que complementem o que foi falado, como:
+     - Macetes de memorização ("Bizu")
+     - Tabelas comparativas quando aplicável
+     - Destaques com blockquotes para pontos-chave
+     - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
+  4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas baseadas no conteúdo do vídeo, com gabarito comentado.
+  5. **FORMATO**: Use Markdown rico e profissional. O resultado deve parecer uma apostila de cursinho preparatório de alto nível.
+  6. **NÃO INVENTE**: Baseie-se fielmente na transcrição. Não adicione informações falsas, especialmente sobre leis, jurisprudências ou datas.
+  
+  TRANSCRIÇÃO DO VÍDEO:
+  ---
+  ${trimmedTranscript}
+  ---
+  
+  Agora gere a apostila completa em Markdown.`;
+
+  const result = await model.generateContent(prompt);
+  const content = result.response.text();
+
+  return {
+    title: videoTitle,
+    content,
+    category: 'YouTube',
+    type: 'VIDEO',
+    videoId,
+    summary: `Material extraído do vídeo "${videoTitle}" — Conteúdo completo transformado em apostila pelo BizuBot.`
+  };
 }
 
 async function handleGenerateStudyMaterials(genAI, modelName, { topic, count }) {

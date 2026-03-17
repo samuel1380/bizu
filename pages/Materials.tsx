@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StudyMaterial } from '../types';
-import { generateStudyMaterials, generateMaterialContent, createCustomMaterial, extendMaterialContent } from '../services/gemini';
+import { generateStudyMaterials, generateMaterialContent, createCustomMaterial, extendMaterialContent, extractFromYoutube } from '../services/gemini';
 import { getAllMaterials, saveMaterialsBatch, saveMaterial, clearAllMaterials, getStudyRoutine } from '../services/db';
-import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download, PlusCircle, Trash2, ChevronDown } from 'lucide-react';
+import { FileText, Book, Search, Loader2, X, Sparkles, Printer, Download, PlusCircle, Trash2, ChevronDown, Youtube } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -39,6 +39,12 @@ const Materials: React.FC = () => {
   const [customTopic, setCustomTopic] = useState('');
   const [creatingCustom, setCreatingCustom] = useState(false);
   const [activeTab, setActiveTab] = useState<'mine' | 'free'>('mine');
+
+  // YouTube Extractor
+  const [showYoutubeForm, setShowYoutubeForm] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [extractingVideo, setExtractingVideo] = useState(false);
+  const [extractProgress, setExtractProgress] = useState('');
 
   const EXTERNAL_SOURCES = [
     {
@@ -143,6 +149,53 @@ const Materials: React.FC = () => {
       alert("Falha ao criar material. Tente novamente.");
     } finally {
       setCreatingCustom(false);
+    }
+  };
+
+  const handleExtractVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!youtubeUrl.trim()) return;
+
+    // Validar URL do YouTube
+    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/;
+    if (!ytRegex.test(youtubeUrl.trim())) {
+      alert('Link inválido! Cole um link do YouTube válido. Ex: https://youtube.com/watch?v=...');
+      return;
+    }
+
+    setExtractingVideo(true);
+    setExtractProgress('Conectando ao YouTube...');
+
+    try {
+      // Simular progresso
+      const progressTimer = setInterval(() => {
+        setExtractProgress(prev => {
+          if (prev.includes('Conectando')) return '📝 Extraindo transcrição do vídeo...';
+          if (prev.includes('transcrição')) return '🤖 IA processando o conteúdo...';
+          if (prev.includes('processando')) return '📚 Montando sua apostila...';
+          return prev;
+        });
+      }, 4000);
+
+      const routine = await getStudyRoutine();
+      const studyType = routine?.studyType || 'concurso';
+
+      const newMaterial = await extractFromYoutube(youtubeUrl.trim(), studyType);
+      clearInterval(progressTimer);
+
+      await saveMaterial(newMaterial);
+      setMaterials(prev => [newMaterial, ...prev]);
+      setYoutubeUrl('');
+      setShowYoutubeForm(false);
+      setExtractProgress('');
+      // Abrir o material gerado
+      handleOpenMaterial(newMaterial);
+    } catch (error: any) {
+      console.error('Erro ao extrair vídeo:', error);
+      alert(error.message || 'Erro ao extrair conteúdo do vídeo. Verifique se o vídeo possui legendas ativadas.');
+    } finally {
+      setExtractingVideo(false);
+      setExtractProgress('');
     }
   };
 
@@ -380,6 +433,7 @@ const Materials: React.FC = () => {
   const getIcon = (type: StudyMaterial['type']) => {
     switch (type) {
       case 'PDF': return <FileText size={24} className="text-red-500" strokeWidth={2.5} />;
+      case 'VIDEO': return <Youtube size={24} className="text-red-500" strokeWidth={2.5} />;
       case 'ARTICLE': return <Book size={24} className="text-blue-500" strokeWidth={2.5} />;
       default: return <FileText size={24} className="text-slate-500" strokeWidth={2.5} />;
     }
@@ -409,6 +463,15 @@ const Materials: React.FC = () => {
         <div className="flex gap-2">
           {activeTab === 'mine' && (
             <>
+              <button 
+                onClick={() => setShowYoutubeForm(true)} 
+                className="bg-red-600 text-white px-6 py-3 rounded-2xl border-b-4 border-red-800 font-bold uppercase tracking-wider hover:bg-red-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 shadow-lg"
+              >
+                <Youtube size={20} />
+                <span className="hidden sm:inline">EXTRAIR DE VÍDEO</span>
+                <span className="sm:hidden">VÍDEO</span>
+              </button>
+
               <button 
                 onClick={() => setShowCustomForm(true)} 
                 className="bg-emerald-600 text-white px-6 py-3 rounded-2xl border-b-4 border-emerald-800 font-bold uppercase tracking-wider hover:bg-emerald-500 active:border-b-0 active:translate-y-1 transition-all flex items-center gap-2 shadow-lg"
@@ -542,6 +605,64 @@ const Materials: React.FC = () => {
                       <>CRIANDO ESTRUTURA... <Loader2 size={24} className="animate-spin" /></>
                     ) : (
                       <>GERAR MATERIAL AGORA</>
+                    )}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* YouTube Extractor Modal */}
+          {showYoutubeForm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+              <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-300">
+                <div className="p-6 border-b-2 border-slate-100 dark:border-slate-700 flex items-center justify-between bg-red-50 dark:bg-red-900/20">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl">
+                      <Youtube size={24} />
+                    </div>
+                    <h3 className="text-xl font-black text-slate-700 dark:text-slate-100 uppercase tracking-tight">Extrair de Vídeo</h3>
+                  </div>
+                  <button onClick={() => { setShowYoutubeForm(false); setYoutubeUrl(''); setExtractProgress(''); }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" disabled={extractingVideo}>
+                    <X size={24} strokeWidth={3} />
+                  </button>
+                </div>
+                
+                <form onSubmit={handleExtractVideo} className="p-8 space-y-6">
+                  <div>
+                    <label className="block text-sm font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3 ml-1">
+                      Cole o link do vídeo do YouTube
+                    </label>
+                    <input
+                      required
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      disabled={extractingVideo}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600 focus:bg-white dark:focus:bg-slate-600 focus:border-red-500 focus:ring-0 transition-all outline-none font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-500 disabled:opacity-50"
+                    />
+                    <p className="mt-3 text-xs text-slate-400 dark:text-slate-500 font-bold leading-relaxed">
+                      🎯 O sistema vai extrair toda a transcrição do vídeo e transformar em uma <span className="text-red-500">apostila completa</span> com teoria, destaques e exercícios!
+                    </p>
+                  </div>
+
+                  {extractingVideo && extractProgress && (
+                    <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-200 dark:border-red-800/30">
+                      <Loader2 size={20} className="animate-spin text-red-500" />
+                      <span className="text-sm font-bold text-red-600 dark:text-red-400">{extractProgress}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={extractingVideo}
+                    className="w-full bg-red-600 text-white border-b-4 border-red-800 rounded-2xl font-black text-lg py-4 hover:bg-red-500 active:border-b-0 active:translate-y-1 transition-all uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {extractingVideo ? (
+                      <><Loader2 size={24} className="animate-spin" /> EXTRAINDO...</>
+                    ) : (
+                      <><Youtube size={24} /> EXTRAIR MATERIAL DO VÍDEO</>
                     )}
                   </button>
                 </form>

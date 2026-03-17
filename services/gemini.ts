@@ -79,6 +79,18 @@ export const generateStudyRoutine = async (targetExam: string, hours: number, su
   };
 };
 
+export const extractFromYoutube = async (youtubeUrl: string, studyType: string = 'concurso'): Promise<StudyMaterial> => {
+  const result = await apiCall('extractYoutubeContent', { youtubeUrl, studyType });
+  return {
+    ...result,
+    id: result.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `yt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`),
+    updatedAt: new Date().toISOString(),
+    type: 'VIDEO' as const,
+    category: result.category || 'YouTube',
+    duration: result.duration || 'Videoaula',
+  };
+};
+
 export const updateContestRadar = async (existingTitles: string[] = [], studyType: string = 'concurso'): Promise<any> => {
   const result = await apiCall('updateRadar', { existingTitles, studyType });
   
