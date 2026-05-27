@@ -131,8 +131,51 @@ app.post('/webhooks/hubla', async (req, res) => {
 
   try {
     const expectedToken = process.env.HUBLA_WEBHOOK_TOKEN;
-    if (expectedToken && (!hublaToken || hublaToken !== expectedToken)) {
-      return res.status(401).send('Token inválido');
+    
+    // Função auxiliar para mascarar o token de forma segura nos logs e respostas
+    const maskToken = (token) => {
+      if (!token) return 'null/vazio';
+      if (token.length <= 6) return '***';
+      return token.substring(0, 3) + '...' + token.substring(token.length - 3);
+    };
+
+    // Identificar se o token esperado é um placeholder ou não foi configurado corretamente
+    const isPlaceholder = (token) => {
+      if (!token) return true;
+      const lower = token.toLowerCase().trim();
+      return (
+        lower === '' ||
+        lower === 'undefined' ||
+        lower === 'null' ||
+        lower.includes('placeholder') ||
+        lower.includes('seu_token') ||
+        lower.includes('sua_chave') ||
+        lower.includes('change_me') ||
+        lower.includes('insira') ||
+        lower.includes('inserir') ||
+        lower === 'token'
+      );
+    };
+
+    // Se o token esperado for um placeholder, liberamos a requisição para evitar que o cliente fique sem acesso.
+    if (isPlaceholder(expectedToken)) {
+      console.warn(
+        `⚠️ [AVISO DE SEGURANÇA HUBLA]: A variável HUBLA_WEBHOOK_TOKEN não está configurada ou possui um valor de placeholder ('${expectedToken}'). ` +
+        `O webhook aceitou a requisição sem validação rígida de token para não deixar seus clientes sem acesso. ` +
+        `Recomendamos configurar um token real nas variáveis de ambiente do Render e no painel da Hubla.`
+      );
+    } else {
+      // Se houver um token real configurado, validamos estritamente
+      if (!hublaToken || hublaToken !== expectedToken) {
+        const errorMsg = 
+          `Erro de Autenticação: Token de Webhook inválido. ` +
+          `Recebido da Hubla: '${maskToken(hublaToken)}', ` +
+          `Configurado no Servidor: '${maskToken(expectedToken)}'. ` +
+          `Verifique as variáveis de ambiente no Render e o campo 'Token de Segurança' no webhook da Hubla.`;
+        
+        console.error(`❌ [ERRO DE AUTENTICAÇÃO HUBLA]: ${errorMsg}`);
+        return res.status(401).send(errorMsg);
+      }
     }
 
     let email = event.data?.user?.email ||
