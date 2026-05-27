@@ -48,8 +48,9 @@ const Mentor: React.FC = () => {
     e.preventDefault();
     if (!input.trim() || loading) return;
 
+    const now = Date.now();
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: `user-${now}`,
       role: 'user',
       text: input,
       timestamp: new Date()
@@ -58,7 +59,9 @@ const Mentor: React.FC = () => {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
-    saveChatMessage(userMsg);
+
+    // Salvar mensagem do usuário em background (sem bloquear a UI)
+    saveChatMessage(userMsg).catch(err => console.error('Erro ao salvar msg do usuário:', err));
 
     try {
       const history = messages.map(m => ({
@@ -74,25 +77,29 @@ const Mentor: React.FC = () => {
         : "⚠️ Não consegui gerar uma resposta para isso. Tente perguntar de outra forma.";
 
       const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `bot-${Date.now()}`,
         role: 'model',
         text: finalText,
         timestamp: new Date()
       };
 
+      // IMPORTANTE: Desligar o loading ANTES de adicionar a mensagem,
+      // para que o indicador "..." desapareça no mesmo frame que a resposta aparece.
+      setLoading(false);
       setMessages(prev => [...prev, botMsg]);
-      await saveChatMessage(botMsg);
+
+      // Salvar no banco em background (sem bloquear a UI)
+      saveChatMessage(botMsg).catch(err => console.error('Erro ao salvar msg do bot:', err));
     } catch (error: any) {
       const errorMessage = error.message || 'Ops! Tive um problema de conexão.';
       const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `err-${Date.now()}`,
         role: 'model',
         text: `⚠️ **Erro:** ${errorMessage}`,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
       setLoading(false);
+      setMessages(prev => [...prev, errorMsg]);
     }
   };
 
