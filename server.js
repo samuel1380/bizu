@@ -90,9 +90,13 @@ const MODEL_FALLBACK_LIST = [
 ];
 
 const GROQ_MODELS = [
+  "openai/gpt-oss-120b",
+  "groq/compound",
+  "groq/compound-mini",
+  "openai/gpt-oss-20b",
   "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
-  "mixtral-8x7b-32768"
+  "qwen/qwen3.8-27b"
 ];
 
 const MISTRAL_MODELS = [
@@ -107,21 +111,51 @@ const OPENROUTER_MODELS = [
   "deepseek/deepseek-chat"
 ];
 
-// Estado da IA Primária escolhida em tempo de execução pelo Painel Admin
+// Estado da IA Primária, Modelo Groq e Chaves salvas em tempo de execução
 let runtimePreferredProvider = null;
+let runtimePreferredGroqModel = null;
+const runtimeApiKeys = {
+  gemini: '',
+  groq: '',
+  mistral: '',
+  openrouter: ''
+};
 
-// Tenta restaurar a preferência de IA salva no Supabase no boot do servidor
+// Tenta restaurar as preferências e chaves de IA salvas no Supabase no boot do servidor
 (async () => {
   if (!supabase) return;
   try {
-    const { data } = await supabase
+    const { data: settings } = await supabase
       .from('system_settings')
-      .select('value')
-      .eq('key', 'ai_preferred_provider')
-      .maybeSingle();
-    if (data?.value) {
-      runtimePreferredProvider = data.value;
-      console.log(`[Boot] 🤖 IA primária carregada do Supabase: ${runtimePreferredProvider.toUpperCase()}`);
+      .select('key, value')
+      .in('key', [
+        'ai_preferred_provider',
+        'ai_groq_preferred_model',
+        'ai_gemini_key',
+        'ai_groq_key',
+        'ai_mistral_key',
+        'ai_openrouter_key'
+      ]);
+
+    if (settings && Array.isArray(settings)) {
+      for (const item of settings) {
+        if (!item.value) continue;
+        if (item.key === 'ai_preferred_provider') {
+          runtimePreferredProvider = item.value;
+          console.log(`[Boot] 🤖 IA primária carregada do Supabase: ${runtimePreferredProvider.toUpperCase()}`);
+        } else if (item.key === 'ai_groq_preferred_model') {
+          runtimePreferredGroqModel = item.value;
+          console.log(`[Boot] ⚡ Modelo Groq primário carregado do Supabase: ${runtimePreferredGroqModel}`);
+        } else if (item.key === 'ai_gemini_key') {
+          runtimeApiKeys.gemini = item.value;
+        } else if (item.key === 'ai_groq_key') {
+          runtimeApiKeys.groq = item.value;
+        } else if (item.key === 'ai_mistral_key') {
+          runtimeApiKeys.mistral = item.value;
+        } else if (item.key === 'ai_openrouter_key') {
+          runtimeApiKeys.openrouter = item.value;
+        }
+      }
     }
   } catch (e) { }
 })();
@@ -680,17 +714,60 @@ async function callGemini(geminiInstance, modelName, prompt, isJson = false, his
   return { text };
 }
 
+function getAIKeys() {
+  const geminiKey = (
+    runtimeApiKeys.gemini ||
+    process.env.GEMINI_API_KEY ||
+    process.env.API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GEMINI_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GEMINI_API_KEY ||
+    ''
+  ).trim().replace(/^["']|["']$/g, '');
+
+  const groqKey = (
+    runtimeApiKeys.groq ||
+    process.env.GROQ_API_KEY ||
+    process.env.GROQ_KEY ||
+    process.env.GROQ_APIKEY ||
+    process.env.VITE_GROQ_API_KEY ||
+    process.env.GROQ ||
+    ''
+  ).trim().replace(/^["']|["']$/g, '');
+
+  const mistralKey = (
+    runtimeApiKeys.mistral ||
+    process.env.MISTRAL_API_KEY ||
+    process.env.MISTRAL_KEY ||
+    process.env.MISTRAL_APIKEY ||
+    process.env.VITE_MISTRAL_API_KEY ||
+    ''
+  ).trim().replace(/^["']|["']$/g, '');
+
+  const openRouterKey = (
+    runtimeApiKeys.openrouter ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.OPENROUTER_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.OPENAI_KEY ||
+    process.env.VITE_OPENROUTER_API_KEY ||
+    process.env.VITE_OPENAI_API_KEY ||
+    ''
+  ).trim().replace(/^["']|["']$/g, '');
+
+  return { geminiKey, groqKey, mistralKey, openRouterKey };
+}
+
 function getAI() {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
-  const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-  const mistralKey = process.env.MISTRAL_API_KEY;
+  const { geminiKey, groqKey, mistralKey, openRouterKey } = getAIKeys();
 
   if (!geminiKey && !openRouterKey && !groqKey && !mistralKey) {
     throw new Error("API_KEY_MISSING");
   }
 
-  const defaultPreferred = geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter'));
+  const defaultPreferred = groqKey ? 'groq' : (geminiKey ? 'gemini' : (mistralKey ? 'mistral' : 'openrouter'));
+  const activeGroqModel = runtimePreferredGroqModel || GROQ_MODELS[0];
 
   return {
     gemini: geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null,
@@ -702,7 +779,7 @@ function getAI() {
     groq: groqKey ? {
       apiKey: groqKey,
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.3-70b-versatile'
+      model: activeGroqModel
     } : null,
     mistral: mistralKey ? {
       apiKey: mistralKey,
@@ -715,8 +792,9 @@ function getAI() {
 
 // --- CHAMADA GROQ ---
 async function callGroq(config, prompt, isJson = false, history = null, specificModel = null) {
+  const cleanKey = config.apiKey ? config.apiKey.trim().replace(/^["']|["']$/g, '') : '';
   const headers = {
-    "Authorization": `Bearer ${config.apiKey.trim()}`,
+    "Authorization": `Bearer ${cleanKey}`,
     "Content-Type": "application/json"
   };
 
@@ -725,24 +803,52 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
     messages.push({ role: "user", content: prompt });
   }
 
+  let systemPrompt = BIZU_SYSTEM_PROMPT;
+  if (isJson) {
+    systemPrompt += "\nIMPORTANTE: Responda SEMPRE em formato JSON estritamente válido.";
+  }
+
+  const model = specificModel || config.model || GROQ_MODELS[0];
+
   const body = {
-    model: specificModel || config.model,
+    model: model,
     messages: [
-      { role: "system", content: BIZU_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...messages
     ],
-    response_format: isJson ? { type: "json_object" } : undefined,
     temperature: 0.7,
     max_tokens: 4000
   };
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  if (isJson) {
+    body.response_format = { type: "json_object" };
+  }
+
+  let response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers,
     body: JSON.stringify(body)
   });
 
-  const rawText = await response.text();
+  let rawText = await response.text();
+
+  // Se o modelo rejeitar response_format (ex: 400 Bad Request por incompatibilidade de json_object), tenta sem response_format
+  if (!response.ok && isJson && response.status === 400) {
+    try {
+      const errObj = JSON.parse(rawText || "{}");
+      const errMsg = errObj.error?.message || "";
+      if (errMsg.toLowerCase().includes('response_format') || errMsg.toLowerCase().includes('json')) {
+        console.log(`[Groq] Modelo ${model} rejeitou response_format json_object. Tentando novamente sem o parâmetro...`);
+        delete body.response_format;
+        response = await fetch(`${config.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(body)
+        });
+        rawText = await response.text();
+      }
+    } catch (e) { }
+  }
 
   if (!response.ok) {
     let errorMsg = rawText;
@@ -756,7 +862,7 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
   }
 
   const data = JSON.parse(rawText);
-  return { text: data.choices[0].message.content || "" };
+  return { text: data.choices[0]?.message?.content || "" };
 }
 
 // --- CHAMADA MISTRAL ---
@@ -1174,7 +1280,11 @@ async function runWithModelFallback(ai, actionName, payload) {
 
       // --- TENTANDO GROQ ---
       if (provider === 'groq' && ai.groq) {
-        for (const model of GROQ_MODELS) {
+        const groqModelsToTry = runtimePreferredGroqModel
+          ? [runtimePreferredGroqModel, ...GROQ_MODELS.filter(m => m !== runtimePreferredGroqModel)]
+          : GROQ_MODELS;
+
+        for (const model of groqModelsToTry) {
           try {
             console.log(`[Groq] Tentando ${actionName} com ${model}`);
 
@@ -1879,99 +1989,236 @@ app.post('/api/gemini', async (req, res) => {
 // --- ROTAS DE CONFIGURAÇÃO E TESTE DE IA (PAINEL ADMIN) ---
 
 app.get('/api/admin/ai-config', (req, res) => {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-  const mistralKey = process.env.MISTRAL_API_KEY;
-  const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
+  const { geminiKey, groqKey, mistralKey, openRouterKey } = getAIKeys();
 
-  const defaultPreferred = geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter'));
+  const maskKey = (key) => {
+    if (!key) return '';
+    if (key.length <= 8) return '●●●●●●●●';
+    return `${key.slice(0, 4)}...${key.slice(-4)}`;
+  };
+
+  const defaultPreferred = groqKey ? 'groq' : (geminiKey ? 'gemini' : (mistralKey ? 'mistral' : 'openrouter'));
 
   res.json({
     preferredProvider: runtimePreferredProvider || process.env.AI_PROVIDER?.toLowerCase() || defaultPreferred,
+    preferredGroqModel: runtimePreferredGroqModel || GROQ_MODELS[0],
     providers: {
-      gemini: { configured: !!geminiKey, models: MODEL_FALLBACK_LIST },
-      groq: { configured: !!groqKey, models: GROQ_MODELS },
-      mistral: { configured: !!mistralKey, models: MISTRAL_MODELS },
-      openrouter: { configured: !!openRouterKey, models: OPENROUTER_MODELS }
+      gemini: {
+        configured: !!geminiKey,
+        maskedKey: maskKey(geminiKey),
+        models: MODEL_FALLBACK_LIST
+      },
+      groq: {
+        configured: !!groqKey,
+        maskedKey: maskKey(groqKey),
+        models: GROQ_MODELS
+      },
+      mistral: {
+        configured: !!mistralKey,
+        maskedKey: maskKey(mistralKey),
+        models: MISTRAL_MODELS
+      },
+      openrouter: {
+        configured: !!openRouterKey,
+        maskedKey: maskKey(openRouterKey),
+        models: OPENROUTER_MODELS
+      }
     }
   });
 });
 
 app.post('/api/admin/ai-config', async (req, res) => {
-  const { preferredProvider } = req.body;
+  const { preferredProvider, preferredGroqModel, keys } = req.body;
   const validProviders = ['gemini', 'groq', 'mistral', 'openrouter'];
 
-  if (!preferredProvider || !validProviders.includes(preferredProvider.toLowerCase())) {
-    return res.status(400).json({ error: `Provedor inválido. Escolha um entre: ${validProviders.join(', ')}` });
-  }
+  if (preferredProvider && validProviders.includes(preferredProvider.toLowerCase())) {
+    runtimePreferredProvider = preferredProvider.toLowerCase();
+    console.log(`[Admin] 🔄 Provedor de IA primário atualizado para: ${runtimePreferredProvider.toUpperCase()}`);
 
-  runtimePreferredProvider = preferredProvider.toLowerCase();
-  console.log(`[Admin] 🔄 Provedor de IA primário atualizado para: ${runtimePreferredProvider.toUpperCase()}`);
-
-  if (supabase) {
-    try {
-      await supabase
-        .from('system_settings')
-        .upsert({
-          key: 'ai_preferred_provider',
-          value: runtimePreferredProvider,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'key' });
-    } catch (err) {
-      console.warn('[Admin] Não foi possível salvar configuração no Supabase (system_settings):', err.message);
+    if (supabase) {
+      try {
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'ai_preferred_provider',
+            value: runtimePreferredProvider,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (err) {
+        console.warn('[Admin] Não foi possível salvar preferência no Supabase:', err.message);
+      }
     }
   }
 
-  res.json({ success: true, preferredProvider: runtimePreferredProvider });
+  if (preferredGroqModel && GROQ_MODELS.includes(preferredGroqModel)) {
+    runtimePreferredGroqModel = preferredGroqModel;
+    console.log(`[Admin] ⚡ Modelo Groq primário atualizado para: ${runtimePreferredGroqModel}`);
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'ai_groq_preferred_model',
+            value: runtimePreferredGroqModel,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (err) { }
+    }
+  }
+
+  if (keys && typeof keys === 'object') {
+    const keyMapping = {
+      gemini: 'ai_gemini_key',
+      groq: 'ai_groq_key',
+      mistral: 'ai_mistral_key',
+      openrouter: 'ai_openrouter_key'
+    };
+
+    for (const [provider, rawValue] of Object.entries(keys)) {
+      if (typeof rawValue === 'string' && rawValue.trim()) {
+        const cleanVal = rawValue.trim().replace(/^["']|["']$/g, '');
+        runtimeApiKeys[provider] = cleanVal;
+        console.log(`[Admin] 🔑 Nova chave salva para: ${provider.toUpperCase()}`);
+
+        if (supabase && keyMapping[provider]) {
+          try {
+            await supabase
+              .from('system_settings')
+              .upsert({
+                key: keyMapping[provider],
+                value: cleanVal,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'key' });
+          } catch (err) { }
+        }
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    preferredProvider: runtimePreferredProvider,
+    preferredGroqModel: runtimePreferredGroqModel
+  });
 });
 
 app.post('/api/admin/test-ai', async (req, res) => {
-  const providers = ['gemini', 'groq', 'mistral', 'openrouter'];
+  const { providerToTest } = req.body || {};
+  const providers = providerToTest ? [providerToTest] : ['gemini', 'groq', 'mistral', 'openrouter'];
   const testResults = [];
+  const { geminiKey, groqKey, mistralKey, openRouterKey } = getAIKeys();
 
   for (const provider of providers) {
     const start = Date.now();
     try {
-      let isConfigured = false;
       let modelUsed = '';
 
       if (provider === 'gemini') {
-        const key = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
-        if (!key) {
+        if (!geminiKey) {
           testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: MODEL_FALLBACK_LIST[0], error: 'Chave GEMINI_API_KEY não configurada' });
           continue;
         }
-        isConfigured = true;
         modelUsed = MODEL_FALLBACK_LIST[0];
-        const dummyAi = new GoogleGenAI({ apiKey: key });
+        const dummyAi = new GoogleGenAI({ apiKey: geminiKey });
         await callGemini(dummyAi, modelUsed, "Responda apenas com a palavra OK.", false);
       } else if (provider === 'groq') {
-        const key = process.env.GROQ_API_KEY;
-        if (!key) {
+        if (!groqKey) {
           testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: GROQ_MODELS[0], error: 'Chave GROQ_API_KEY não configurada' });
           continue;
         }
-        isConfigured = true;
-        modelUsed = GROQ_MODELS[0];
-        await callGroq({ apiKey: key, baseUrl: 'https://api.groq.com/openai/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+
+        const modelsToTest = runtimePreferredGroqModel
+          ? [runtimePreferredGroqModel, ...GROQ_MODELS.filter(m => m !== runtimePreferredGroqModel)]
+          : GROQ_MODELS;
+
+        let groqSuccess = false;
+        let lastGroqError = null;
+
+        for (const testModel of modelsToTest) {
+          try {
+            modelUsed = testModel;
+            const pingRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${groqKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: testModel,
+                messages: [{ role: 'user', content: 'Ping. Responda apenas OK.' }],
+                max_tokens: 10,
+                temperature: 0.1
+              })
+            });
+
+            if (!pingRes.ok) {
+              const pingErr = await pingRes.json().catch(() => ({}));
+              const errMsg = pingErr.error?.message || `HTTP ${pingRes.status}`;
+              const err = new Error(errMsg);
+              if (pingRes.status === 401 || errMsg.toLowerCase().includes('invalid api key') || errMsg.toLowerCase().includes('unauthorized')) {
+                err.isAuthError = true;
+              }
+              throw err;
+            }
+
+            groqSuccess = true;
+            break;
+          } catch (mErr) {
+            lastGroqError = mErr;
+            if (mErr.isAuthError) {
+              break; // Não tenta os outros 6 modelos se a chave for inválida (falha rápida)
+            }
+          }
+        }
+
+        if (!groqSuccess) {
+          throw lastGroqError || new Error('Nenhum modelo Groq respondeu com sucesso.');
+        }
       } else if (provider === 'mistral') {
-        const key = process.env.MISTRAL_API_KEY;
-        if (!key) {
+        if (!mistralKey) {
           testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: MISTRAL_MODELS[0], error: 'Chave MISTRAL_API_KEY não configurada' });
           continue;
         }
-        isConfigured = true;
         modelUsed = MISTRAL_MODELS[0];
-        await callMistral({ apiKey: key, baseUrl: 'https://api.mistral.ai/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+        const pingRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${mistralKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: modelUsed,
+            messages: [{ role: 'user', content: 'Ping. Responda apenas OK.' }],
+            max_tokens: 10
+          })
+        });
+        if (!pingRes.ok) {
+          const errData = await pingRes.json().catch(() => ({}));
+          throw new Error(errData.message || errData.error?.message || `HTTP ${pingRes.status}`);
+        }
       } else if (provider === 'openrouter') {
-        const key = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
-        if (!key) {
-          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: OPENROUTER_MODELS[0], error: 'Chave OPENROUTER_API_KEY / OPENAI_API_KEY não configurada' });
+        if (!openRouterKey) {
+          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: OPENROUTER_MODELS[0], error: 'Chave OPENROUTER_API_KEY não configurada' });
           continue;
         }
-        isConfigured = true;
         modelUsed = OPENROUTER_MODELS[0];
-        await callOpenRouter({ apiKey: key, baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+        const pingRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: modelUsed,
+            messages: [{ role: 'user', content: 'Ping. Responda apenas OK.' }],
+            max_tokens: 10
+          })
+        });
+        if (!pingRes.ok) {
+          const errData = await pingRes.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${pingRes.status}`);
+        }
       }
 
       const latencyMs = Date.now() - start;
@@ -1996,7 +2243,7 @@ app.post('/api/admin/test-ai', async (req, res) => {
   }
 
   res.json({
-    preferredProvider: runtimePreferredProvider || (process.env.GEMINI_API_KEY ? 'gemini' : 'mistral'),
+    preferredProvider: runtimePreferredProvider || (groqKey ? 'groq' : (geminiKey ? 'gemini' : 'mistral')),
     results: testResults
   });
 });

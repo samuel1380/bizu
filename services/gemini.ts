@@ -117,9 +117,11 @@ export const updateContestRadar = async (existingTitles: string[] = [], studyTyp
 
 export interface AIConfigResponse {
   preferredProvider: string;
+  preferredGroqModel?: string;
   providers: {
     [key: string]: {
       configured: boolean;
+      maskedKey?: string;
       models: string[];
     };
   };
@@ -146,23 +148,28 @@ export const getAiConfig = async (): Promise<AIConfigResponse> => {
   return await response.json();
 };
 
-export const saveAiConfig = async (preferredProvider: string): Promise<{ success: boolean; preferredProvider: string }> => {
+export const saveAiConfig = async (
+  preferredProvider: string,
+  preferredGroqModel?: string,
+  keys?: { [key: string]: string }
+): Promise<{ success: boolean; preferredProvider: string; preferredGroqModel?: string }> => {
   const response = await fetch('/api/admin/ai-config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ preferredProvider }),
+    body: JSON.stringify({ preferredProvider, preferredGroqModel, keys }),
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || 'Falha ao salvar provedor de IA');
+    throw new Error(data.error || 'Falha ao salvar configurações de IA');
   }
   return data;
 };
 
-export const testAiProviders = async (): Promise<AITestResponse> => {
+export const testAiProviders = async (providerToTest?: string): Promise<AITestResponse> => {
   const response = await fetch('/api/admin/test-ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ providerToTest }),
   });
   const data = await response.json();
   if (!response.ok) {
@@ -170,4 +177,5 @@ export const testAiProviders = async (): Promise<AITestResponse> => {
   }
   return data;
 };
+
 

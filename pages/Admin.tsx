@@ -18,6 +18,9 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  EyeOff,
+  Key,
+  ShieldCheck,
   Cpu,
   Activity,
   AlertTriangle,
@@ -80,10 +83,24 @@ export default function Admin() {
 
   // Estado da Configuração de IA
   const [aiConfig, setAiConfig] = useState<AIConfigResponse | null>(null);
-  const [selectedPrimaryAi, setSelectedPrimaryAi] = useState<string>('gemini');
+  const [selectedPrimaryAi, setSelectedPrimaryAi] = useState<string>('groq');
+  const [selectedGroqModel, setSelectedGroqModel] = useState<string>('openai/gpt-oss-120b');
+  const [apiKeysInput, setApiKeysInput] = useState<{ [key: string]: string }>({
+    groq: '',
+    gemini: '',
+    mistral: '',
+    openrouter: ''
+  });
+  const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({
+    groq: false,
+    gemini: false,
+    mistral: false,
+    openrouter: false
+  });
   const [savingAiConfig, setSavingAiConfig] = useState(false);
   const [aiSaveSuccess, setAiSaveSuccess] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
+  const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<AITestItem[]>([]);
 
   useEffect(() => {
@@ -103,23 +120,52 @@ export default function Admin() {
       if (cfg?.preferredProvider) {
         setSelectedPrimaryAi(cfg.preferredProvider);
       }
+      if (cfg?.preferredGroqModel) {
+        setSelectedGroqModel(cfg.preferredGroqModel);
+      }
     } catch (e) {
       console.warn('Erro ao carregar configurações de IA:', e);
     }
   }
 
-  async function handleSaveAiProvider(provider: string) {
+  async function handleSaveAllAiSettings() {
     setSavingAiConfig(true);
     try {
-      await saveAiConfig(provider);
-      setSelectedPrimaryAi(provider);
+      const keysToSave: { [key: string]: string } = {};
+      for (const [p, val] of Object.entries(apiKeysInput)) {
+        if (val.trim()) keysToSave[p] = val.trim();
+      }
+
+      await saveAiConfig(
+        selectedPrimaryAi,
+        selectedGroqModel,
+        Object.keys(keysToSave).length > 0 ? keysToSave : undefined
+      );
+
+      setApiKeysInput({ groq: '', gemini: '', mistral: '', openrouter: '' });
       setAiSaveSuccess(true);
-      setTimeout(() => setAiSaveSuccess(false), 3000);
+      setTimeout(() => setAiSaveSuccess(false), 4000);
       await fetchAiSettings();
     } catch (err: any) {
-      alert(`Erro ao salvar IA primária: ${err.message}`);
+      alert(`Erro ao salvar configurações de IA: ${err.message}`);
     } finally {
       setSavingAiConfig(false);
+    }
+  }
+
+  async function handleTestSingleAi(provider: string) {
+    setTestingProvider(provider);
+    try {
+      const res = await testAiProviders(provider);
+      setTestResults(prev => {
+        const others = prev.filter(r => r.provider !== provider);
+        return [...others, ...res.results];
+      });
+      await fetchAiSettings();
+    } catch (err: any) {
+      alert(`Erro ao testar provedor ${provider}: ${err.message}`);
+    } finally {
+      setTestingProvider(null);
     }
   }
 
@@ -131,6 +177,7 @@ export default function Admin() {
       if (res.preferredProvider) {
         setSelectedPrimaryAi(res.preferredProvider);
       }
+      await fetchAiSettings();
     } catch (err: any) {
       alert(`Erro ao testar IAs: ${err.message}`);
     } finally {
@@ -630,12 +677,12 @@ export default function Admin() {
                   </h3>
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">
-                  Escolha qual IA deve responder as requisições dos alunos primeiro. Se ela estiver indisponível ou em limite de cota (429), o sistema usará as outras automaticamente.
+                  Escolha qual IA deve responder as requisições dos alunos primeiro. Se ela estiver indisponível ou em limite de cota (429), o sistema acionará as reservas automaticamente.
                 </p>
               </div>
 
               <button
-                onClick={() => handleSaveAiProvider(selectedPrimaryAi)}
+                onClick={handleSaveAllAiSettings}
                 disabled={savingAiConfig}
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-1 font-black text-sm transition-all shadow-md shrink-0 disabled:opacity-50"
               >
@@ -655,6 +702,44 @@ export default function Admin() {
 
             {/* Grid de Provedores */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Groq Cloud */}
+              <div
+                onClick={() => setSelectedPrimaryAi('groq')}
+                className={`cursor-pointer p-5 rounded-2xl border-2 transition-all relative flex flex-col justify-between ${
+                  selectedPrimaryAi === 'groq'
+                    ? 'border-orange-500 bg-orange-50/50 dark:bg-orange-900/20 shadow-md ring-2 ring-orange-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center justify-center font-black">
+                      ⚡
+                    </div>
+                    {selectedPrimaryAi === 'groq' && (
+                      <span className="bg-orange-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                        ATIVO PRIMÁRIO
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-black text-lg text-slate-800 dark:text-slate-100">Groq Cloud</h4>
+                    <span className="px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded text-[9px] font-black uppercase">
+                      LPU Ultra Rápida
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-3">
+                    Velocidade máxima em tempo real. Suporta GPT-OSS 120B, Compound, Llama 3.3 e Qwen.
+                  </p>
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Modelo Primário:</span>
+                  <p className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400 truncate">
+                    {selectedGroqModel}
+                  </p>
+                </div>
+              </div>
+
               {/* Google Gemini */}
               <div
                 onClick={() => setSelectedPrimaryAi('gemini')}
@@ -688,39 +773,6 @@ export default function Admin() {
                 </div>
               </div>
 
-              {/* Groq Cloud */}
-              <div
-                onClick={() => setSelectedPrimaryAi('groq')}
-                className={`cursor-pointer p-5 rounded-2xl border-2 transition-all relative flex flex-col justify-between ${
-                  selectedPrimaryAi === 'groq'
-                    ? 'border-orange-500 bg-orange-50/50 dark:bg-orange-900/20 shadow-md ring-2 ring-orange-500/20'
-                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/50'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center justify-center font-black">
-                      ⚡
-                    </div>
-                    {selectedPrimaryAi === 'groq' && (
-                      <span className="bg-orange-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
-                        ATIVO PRIMÁRIO
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="font-black text-lg text-slate-800 dark:text-slate-100">Groq Cloud</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-3">
-                    Velocidade absurda (LPU). Respostas quase instantâneas para Quizzes e Mentor BizuBot.
-                  </p>
-                </div>
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Modelos Ativos:</span>
-                  <p className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 truncate">
-                    llama-3.3-70b-versatile, 3.1-8b
-                  </p>
-                </div>
-              </div>
-
               {/* Mistral AI */}
               <div
                 onClick={() => setSelectedPrimaryAi('mistral')}
@@ -743,7 +795,7 @@ export default function Admin() {
                   </div>
                   <h4 className="font-black text-lg text-slate-800 dark:text-slate-100">Mistral AI</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-3">
-                    Altíssima capacidade lógica e raciocínio refinado para questões de alta dificuldade de concursos.
+                    Altíssima capacidade lógica e raciocínio refinado para questões difíceis de concursos.
                   </p>
                 </div>
                 <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
@@ -788,6 +840,62 @@ export default function Admin() {
               </div>
             </div>
 
+            {/* SELEÇÃO DO MODELO ESPECÍFICO DA GROQ */}
+            <div className="p-5 bg-orange-50/70 dark:bg-orange-950/20 border-2 border-orange-200 dark:border-orange-800/40 rounded-2xl mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-black text-sm">
+                    ⚡
+                  </span>
+                  <div>
+                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-base">
+                      Modelo Preferencial da Groq Cloud
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                      Selecione qual modelo da Groq será chamado primeiro ao acionar a Groq:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/50 px-3 py-1.5 rounded-xl border border-orange-300 dark:border-orange-700">
+                  Ativo: <span className="font-mono font-black">{selectedGroqModel}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {[
+                  { id: 'openai/gpt-oss-120b', label: 'OpenAI GPT-OSS 120B', desc: '120B MoE • Raciocínio Profundo & Codificação', badge: 'Recomendado' },
+                  { id: 'groq/compound', label: 'Groq Compound System', desc: 'Sistema Composto com Web Search & Tools automáticas', badge: 'Agêntico' },
+                  { id: 'groq/compound-mini', label: 'Groq Compound Mini', desc: 'Versão ultra veloz do Compound com ferramentas', badge: 'Ultra Rápido' },
+                  { id: 'openai/gpt-oss-20b', label: 'OpenAI GPT-OSS 20B', desc: '20B Rápido e leve para Quizzes instantâneos', badge: 'Econômico' },
+                  { id: 'llama-3.3-70b-versatile', label: 'Meta Llama 3.3 70B', desc: '70B Versátil com altíssima precisão acadêmica', badge: 'Estável' },
+                  { id: 'llama-3.1-8b-instant', label: 'Meta Llama 3.1 8B', desc: '8B Instantâneo com latência de menos de 100ms', badge: 'Veloz' },
+                  { id: 'qwen/qwen3.8-27b', label: 'Alibaba Qwen 27B', desc: '27B de alta capacidade multilíngue', badge: 'Alibaba' }
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedGroqModel(m.id)}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      selectedGroqModel === m.id
+                        ? 'bg-orange-500 text-white border-orange-600 shadow-sm font-bold'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="font-mono text-xs font-black truncate">{m.label}</span>
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${selectedGroqModel === m.id ? 'bg-orange-700 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                        {m.badge}
+                      </span>
+                    </div>
+                    <p className={`text-[10px] leading-tight ${selectedGroqModel === m.id ? 'text-orange-100' : 'text-slate-400 dark:text-slate-400'}`}>
+                      {m.desc}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Cadeia de Contingência Dinâmica */}
             <div className="bg-slate-50 dark:bg-slate-900/80 p-4 md:p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
@@ -798,7 +906,7 @@ export default function Admin() {
                   1. {selectedPrimaryAi.toUpperCase()} (PRIMÁRIO)
                 </span>
                 <span className="text-slate-400">➜</span>
-                {['gemini', 'mistral', 'groq', 'openrouter']
+                {['groq', 'gemini', 'mistral', 'openrouter']
                   .filter(p => p !== selectedPrimaryAi)
                   .map((p, idx) => (
                     <React.Fragment key={p}>
@@ -815,7 +923,93 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* CARD 2: DIAGNÓSTICO EM TEMPO REAL E TESTE DE CONEXÃO */}
+          {/* CARD 2: GERENCIADOR DE CHAVES DE API (CONFIGURAÇÃO IMEDIATA) */}
+          <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b-2 border-slate-100 dark:border-slate-700 pb-5">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
+                    <Key size={20} />
+                  </span>
+                  <h3 className="text-2xl font-black text-slate-700 dark:text-slate-100 tracking-tight">
+                    Gerenciador de Chaves de API das IAs
+                  </h3>
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">
+                  Você pode salvar as chaves diretamente no sistema (salvas no Supabase e ativadas imediatamente sem precisar reiniciar o Render) ou usar as Environment Variables do Render.
+                </p>
+              </div>
+
+              <button
+                onClick={handleSaveAllAiSettings}
+                disabled={savingAiConfig}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 font-black text-sm transition-all shadow-md shrink-0 disabled:opacity-50"
+              >
+                {savingAiConfig ? (
+                  <>
+                    <RefreshCw className="animate-spin" size={18} />
+                    SALVANDO CHAVES...
+                  </>
+                ) : (
+                  <>
+                    <Check size={18} />
+                    SALVAR CHAVES & PREFERÊNCIAS
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { id: 'groq', name: 'Groq Cloud API Key', varName: 'GROQ_API_KEY', placeholder: 'gsk_...', color: 'text-orange-600 dark:text-orange-400' },
+                { id: 'gemini', name: 'Google Gemini API Key', varName: 'GEMINI_API_KEY', placeholder: 'AIzaSy...', color: 'text-blue-600 dark:text-blue-400' },
+                { id: 'mistral', name: 'Mistral AI Key', varName: 'MISTRAL_API_KEY', placeholder: 'Cole sua chave Mistral...', color: 'text-amber-600 dark:text-amber-400' },
+                { id: 'openrouter', name: 'OpenRouter API Key', varName: 'OPENROUTER_API_KEY', placeholder: 'sk-or-...', color: 'text-indigo-600 dark:text-indigo-400' }
+              ].map(item => {
+                const isConfigured = aiConfig?.providers?.[item.id]?.configured;
+                const masked = aiConfig?.providers?.[item.id]?.maskedKey;
+
+                return (
+                  <div key={item.id} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-slate-200 dark:border-slate-700 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className={`font-black text-sm uppercase ${item.color}`}>{item.name}</span>
+                        <p className="text-[10px] font-mono text-slate-400">Variável: {item.varName}</p>
+                      </div>
+                      {isConfigured ? (
+                        <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 rounded-full">
+                          <Check size={12} /> {masked || 'Ativa'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-full">
+                          Não configurada
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative mt-2">
+                      <input
+                        type={showKey[item.id] ? 'text' : 'password'}
+                        placeholder={isConfigured ? 'Substituir chave existente...' : item.placeholder}
+                        value={apiKeysInput[item.id] || ''}
+                        onChange={(e) => setApiKeysInput(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        className="w-full pl-3 pr-10 py-2.5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-500 transition-all text-slate-700 dark:text-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowKey(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all"
+                      >
+                        {showKey[item.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* CARD 3: DIAGNÓSTICO EM TEMPO REAL E TESTE DE CONEXÃO */}
           <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border-2 border-slate-200 dark:border-slate-700 border-b-8 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b-2 border-slate-100 dark:border-slate-700 pb-5">
               <div>
@@ -828,7 +1022,7 @@ export default function Admin() {
                   </h3>
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">
-                  Execute um teste de ping real em todas as chaves de API configuradas no Render para verificar latência e disponibilidade.
+                  Execute um teste de ping real nas chaves de API para medir latência e verificar disponibilidade de cada modelo.
                 </p>
               </div>
 
@@ -844,9 +1038,10 @@ export default function Admin() {
 
             {/* Lista de Resultados de Teste */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {['gemini', 'groq', 'mistral', 'openrouter'].map((provider) => {
+              {['groq', 'gemini', 'mistral', 'openrouter'].map((provider) => {
                 const result = testResults.find(r => r.provider === provider);
                 const isConfigured = aiConfig?.providers?.[provider]?.configured;
+                const isTestingThis = testingProvider === provider;
 
                 return (
                   <div
@@ -866,55 +1061,67 @@ export default function Admin() {
                           )}
                         </div>
                         <span className="text-[11px] font-bold text-slate-400">
-                          {provider === 'gemini' && 'Google Gemini API'}
-                          {provider === 'groq' && 'Groq LPU Inference'}
+                          {provider === 'gemini' && 'Google Gemini API (2.0 / 1.5)'}
+                          {provider === 'groq' && 'Groq LPU (GPT-OSS 120B / Compound / Llama)'}
                           {provider === 'mistral' && 'Mistral AI Platform'}
                           {provider === 'openrouter' && 'OpenRouter AI Gateway'}
                         </span>
                       </div>
 
                       {/* Status Badge */}
-                      {result ? (
-                        result.status === 'online' ? (
-                          <span className="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 rounded-full font-black text-xs">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            ONLINE ({result.latencyMs}ms)
-                          </span>
-                        ) : result.status === 'rate_limited' ? (
-                          <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-full font-black text-xs">
-                            <AlertTriangle size={14} />
-                            COTA ESGOTADA (429)
-                          </span>
-                        ) : result.status === 'unconfigured' ? (
-                          <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full font-black text-xs">
-                            NÃO CONFIGURADA
+                      <div className="flex items-center gap-2">
+                        {result ? (
+                          result.status === 'online' ? (
+                            <span className="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 rounded-full font-black text-xs">
+                              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                              ONLINE ({result.latencyMs}ms)
+                            </span>
+                          ) : result.status === 'rate_limited' ? (
+                            <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-full font-black text-xs">
+                              <AlertTriangle size={14} />
+                              COTA ESGOTADA (429)
+                            </span>
+                          ) : result.status === 'unconfigured' ? (
+                            <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full font-black text-xs">
+                              NÃO CONFIGURADA
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 rounded-full font-black text-xs">
+                              ERRO
+                            </span>
+                          )
+                        ) : isConfigured ? (
+                          <span className="px-3 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-full font-black text-xs">
+                            CONFIGURADA (PRONTA)
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 rounded-full font-black text-xs">
-                            ERRO
+                          <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full font-black text-xs">
+                            SEM CHAVE
                           </span>
-                        )
-                      ) : isConfigured ? (
-                        <span className="px-3 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-full font-black text-xs">
-                          CONFIGURADA (PRONTA)
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full font-black text-xs">
-                          SEM CHAVE NO RENDER
-                        </span>
-                      )}
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleTestSingleAi(provider)}
+                          disabled={isTestingThis || testingAi}
+                          title={`Testar apenas ${provider}`}
+                          className="p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-all disabled:opacity-40"
+                        >
+                          <RefreshCw className={isTestingThis ? "animate-spin" : ""} size={14} />
+                        </button>
+                      </div>
                     </div>
 
                     {result?.error && (
-                      <div className="mt-2 p-2 bg-red-500/10 rounded-lg text-[11px] font-mono text-red-600 dark:text-red-400 border border-red-500/20 truncate" title={result.error}>
+                      <div className="mt-2 p-2 bg-red-500/10 rounded-lg text-[11px] font-mono text-red-600 dark:text-red-400 border border-red-500/20 break-all" title={result.error}>
                         {result.error}
                       </div>
                     )}
 
                     <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold">
-                      <span>Modelos de Fallback:</span>
-                      <span className="font-mono text-[11px]">
-                        {aiConfig?.providers?.[provider]?.models?.slice(0, 2).join(', ') || 'Padrão'}
+                      <span>Modelo Respondido / Fallback:</span>
+                      <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
+                        {result?.model || (provider === 'groq' ? selectedGroqModel : aiConfig?.providers?.[provider]?.models?.[0]) || 'Padrão'}
                       </span>
                     </div>
                   </div>
