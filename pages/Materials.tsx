@@ -264,7 +264,8 @@ const Materials: React.FC = () => {
   const handlePrintPDF = () => {
     // Título do documento para o nome do arquivo ao salvar PDF
     const originalTitle = document.title;
-    document.title = `Bizu_Apostila_${selectedMaterial?.title.replace(/\s+/g, '_')}`;
+    const safeTitle = (selectedMaterial?.title || 'Apostila').replace(/\s+/g, '_');
+    document.title = `Bizu_Apostila_${safeTitle}`;
     window.print();
     document.title = originalTitle;
   };
@@ -394,7 +395,7 @@ const Materials: React.FC = () => {
 
       const opt = {
         margin: [10, 10, 10, 10],
-        filename: `Bizu_Apostila_${selectedMaterial.title.replace(/\s+/g, '_')}.pdf`,
+        filename: `Bizu_Apostila_${(selectedMaterial?.title || 'Apostila').replace(/\s+/g, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
           scale: 2, 

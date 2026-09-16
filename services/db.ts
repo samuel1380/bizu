@@ -1,6 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { ChatMessage, StudyMaterial, StudyRoutine } from '../types';
 import { supabaseService } from './supabaseService';
+import { supabase } from './supabaseClient';
 
 // Define se o app deve usar Supabase ou IndexedDB
 // Por padrão, se as chaves do Supabase estiverem configuradas, usaremos Supabase
@@ -200,52 +201,39 @@ export const clearAllMaterials = async () => {
 
 // Routine Helpers
 export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
-  let routine: StudyRoutine | undefined;
-  let localData: string | null = null;
-
-  try {
-    localData = localStorage.getItem('bizu_user_routine');
-  } catch (e) {
-    console.error("Erro ao acessar localStorage", e);
-  }
-
-  if (localData) {
+  if (USE_SUPABASE) {
     try {
-      routine = JSON.parse(localData);
-    } catch (e) {
-      console.error("Erro ao ler rotina do localStorage", e);
-    }
-  }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return undefined;
 
-  if (!routine) {
-    try {
-      const db = await getDB();
-      routine = await db.get('routine', 'user_routine');
-    } catch (e) {
-      console.error("Erro ao buscar rotina no IndexedDB", e);
-    }
-  }
-
-  if (!routine && USE_SUPABASE) {
-    try {
+      // 1. Tentar carregar do Supabase (Fonte Canônica do usuário logado)
       const cloudRoutine = await supabaseService.getStudyRoutine();
       if (cloudRoutine) {
-        routine = cloudRoutine;
         try {
-          localStorage.setItem('bizu_user_routine', JSON.stringify(cloudRoutine));
-        } catch (e) {
-          console.error("Erro ao salvar rotina no localStorage", e);
-        }
-        try {
-          const db = await getDB();
-          await db.put('routine', { ...cloudRoutine, id: 'user_routine' });
-        } catch (e) {
-          console.error("Erro ao salvar rotina no IndexedDB", e);
-        }
+          localStorage.setItem(`bizu_routine_${user.id}`, JSON.stringify(cloudRoutine));
+        } catch (e) { }
+        return cloudRoutine;
       }
+
+      // Se o usuário não possui rotina na nuvem, garante que não herdará rotinas de outros
+      try {
+        localStorage.removeItem(`bizu_routine_${user.id}`);
+        localStorage.removeItem('bizu_user_routine');
+      } catch (e) { }
+      return undefined;
     } catch (e) {
-      console.warn("Erro ao buscar rotina da nuvem", e);
+      console.warn("Erro ao buscar rotina da nuvem:", e);
+      return undefined;
     }
+  }
+
+  // Fallback IndexedDB / Local apenas se não usar Supabase
+  let routine: StudyRoutine | undefined;
+  try {
+    const db = await getDB();
+    routine = await db.get('routine', 'user_routine');
+  } catch (e) {
+    console.error("Erro ao buscar rotina no IndexedDB", e);
   }
 
   return routine;
@@ -254,10 +242,19 @@ export const getStudyRoutine = async (): Promise<StudyRoutine | undefined> => {
 export const saveStudyRoutine = async (routine: StudyRoutine) => {
   routine.id = 'user_routine';
 
-  try {
-    localStorage.setItem('bizu_user_routine', JSON.stringify(routine));
-  } catch (e) {
-    console.error("Erro ao salvar rotina no localStorage", e);
+  if (USE_SUPABASE) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        try {
+          localStorage.setItem(`bizu_routine_${user.id}`, JSON.stringify(routine));
+        } catch (e) { }
+      }
+      await supabaseService.saveStudyRoutine(routine);
+      return;
+    } catch (e) {
+      console.error("Erro ao salvar rotina na nuvem:", e);
+    }
   }
 
   try {
@@ -266,22 +263,16 @@ export const saveStudyRoutine = async (routine: StudyRoutine) => {
   } catch (e) {
     console.error("Erro ao salvar rotina no IndexedDB", e);
   }
-
-  if (USE_SUPABASE) {
-    try {
-      await supabaseService.saveStudyRoutine(routine);
-    } catch (e) {
-      console.error("Erro ao salvar rotina na nuvem", e);
-    }
-  }
 };
 
 export const deleteStudyRoutine = async () => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      localStorage.removeItem(`bizu_routine_${user.id}`);
+    }
     localStorage.removeItem('bizu_user_routine');
-  } catch (e) {
-    console.error("Erro ao remover rotina do localStorage", e);
-  }
+  } catch (e) { }
 
   try {
     const db = await getDB();
@@ -294,7 +285,29 @@ export const deleteStudyRoutine = async () => {
     try {
       await supabaseService.deleteStudyRoutine();
     } catch (e) {
-      console.error("Erro ao deletar rotina da nuvem", e);
+      console.error("Erro ao deletar rotina da nuvem:", e);
     }
   }
 };
+
+export const clearLocalUserData = async () => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('bizu_') || key === 'user_stats' || key === 'bizu_user_routine')) {
+        localStorage.removeItem(key);
+      }
+    }
+    const db = await getDB();
+    const tx = db.transaction(['chat_messages', 'materials', 'routine'], 'readwrite');
+    await Promise.all([
+      tx.objectStore('chat_messages').clear(),
+      tx.objectStore('materials').clear(),
+      tx.objectStore('routine').clear(),
+      tx.done
+    ]);
+  } catch (e) {
+    console.warn("Erro ao limpar dados locais do usuário:", e);
+  }
+};
+

@@ -32,13 +32,7 @@ const Schedule: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!routine) return;
-    const persist = async () => {
-      await saveStudyRoutine(routine);
-    };
-    persist();
-  }, [routine]);
+
 
   const loadRoutine = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -77,6 +71,21 @@ const Schedule: React.FC = () => {
       setExam('');
       setSubjects('');
     }
+  };
+
+  const handleToggleTask = async (dayIndex: number, taskIndex: number) => {
+    if (!routine) return;
+    const updatedWeek = [...routine.weekSchedule];
+    const task = updatedWeek[dayIndex].tasks[taskIndex];
+    task.completed = !task.completed;
+
+    const updatedRoutine = {
+      ...routine,
+      weekSchedule: updatedWeek
+    };
+
+    setRoutine(updatedRoutine);
+    await saveStudyRoutine(updatedRoutine);
   };
 
   if (loading) {
@@ -244,19 +253,41 @@ const Schedule: React.FC = () => {
                         <p className="font-bold text-slate-700 dark:text-slate-100 leading-tight">{day.focus}</p>
                     </div>
 
-                    <div className="space-y-3">
-                        {day.tasks.map((task, tIdx) => (
-                            <div key={tIdx} className="flex items-start gap-3 group cursor-pointer">
-                                <div className="mt-1 text-slate-300 dark:text-slate-600 group-hover:text-green-500 transition-colors">
-                                    <CheckCircle2 size={20} />
+                    <div className="space-y-2">
+                        {day.tasks.map((task, tIdx) => {
+                          const isDone = !!task.completed;
+                          return (
+                            <div 
+                              key={tIdx} 
+                              onClick={() => handleToggleTask(idx, tIdx)}
+                              className={`flex items-start gap-3 group cursor-pointer p-2.5 rounded-2xl transition-all border ${
+                                isDone 
+                                  ? 'bg-green-50/60 dark:bg-green-950/20 border-green-200/50 dark:border-green-800/30' 
+                                  : 'bg-slate-50/50 dark:bg-slate-700/30 border-transparent hover:border-slate-200 dark:hover:border-slate-600'
+                              }`}
+                            >
+                                <div className={`mt-0.5 transition-colors ${
+                                  isDone ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 group-hover:text-blue-500'
+                                }`}>
+                                    <CheckCircle2 size={20} className={isDone ? 'fill-green-100 dark:fill-green-900/50' : ''} />
                                 </div>
-                                <div>
-                                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{task.subject}</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{task.activity} • {task.duration}</p>
+                                <div className="flex-1 min-w-0">
+                                    <p className={`font-bold text-sm transition-all truncate ${
+                                      isDone 
+                                        ? 'text-slate-400 dark:text-slate-500 line-through' 
+                                        : 'text-slate-700 dark:text-slate-200'
+                                    }`}>
+                                      {task.subject}
+                                    </p>
+                                    <p className="text-xs text-slate-400 dark:text-slate-400 font-medium">
+                                      {task.activity} • {task.duration}
+                                    </p>
                                 </div>
                             </div>
-                        ))}
+                          );
+                        })}
                     </div>
+
                 </div>
             </div>
         ))}

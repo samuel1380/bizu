@@ -2,17 +2,21 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
-
-// --- CONFIGURAÇÃO DO AMBIENTE ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-);
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = (supabaseUrl && supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
+
+if (!supabase) {
+  console.warn('⚠️ [Supabase] SUPABASE_URL ou chaves de autenticação não configuradas no servidor.');
+}
 
 // Instrução de Sistema (System Prompt) para a IA se comportar como BizuBot
 const BIZU_SYSTEM_PROMPT = `Você é o BizuBot, a inteligência artificial oficial do Bizu App.
@@ -78,37 +82,55 @@ app.use(express.json());
 app.use(express.static(join(__dirname, 'dist')));
 
 // --- LISTA UNIVERSAL DE MODELOS ---
-// A ordem aqui define a prioridade.
+// A ordem aqui define a prioridade dentro de cada provedor.
 const MODEL_FALLBACK_LIST = [
+  "gemini-2.0-flash",
   "gemini-1.5-flash",
-  "gemini-2.0-flash"
-];
-
-const OPENROUTER_MODELS = [
-  "qwen/qwen3-next-80b-a3b-instruct:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.1-8b-instruct:free"
+  "gemini-1.5-pro"
 ];
 
 const GROQ_MODELS = [
   "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
-  "mixtral-8x7b-32768",
-  "gemma2-9b-it"
+  "mixtral-8x7b-32768"
 ];
 
 const MISTRAL_MODELS = [
   "mistral-large-2411",
-  "pixtral-12b-2409",
-  "open-mistral-nemo"
+  "open-mistral-nemo",
+  "pixtral-12b-2409"
 ];
 
+const OPENROUTER_MODELS = [
+  "google/gemini-2.0-flash-001",
+  "meta-llama/llama-3.3-70b-instruct",
+  "deepseek/deepseek-chat"
+];
+
+// Estado da IA Primária escolhida em tempo de execução pelo Painel Admin
+let runtimePreferredProvider = null;
+
+// Tenta restaurar a preferência de IA salva no Supabase no boot do servidor
+(async () => {
+  if (!supabase) return;
+  try {
+    const { data } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'ai_preferred_provider')
+      .maybeSingle();
+    if (data?.value) {
+      runtimePreferredProvider = data.value;
+      console.log(`[Boot] 🤖 IA primária carregada do Supabase: ${runtimePreferredProvider.toUpperCase()}`);
+    }
+  } catch (e) { }
+})();
+
 const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
 ];
 
 // --- ENDPOINTS DE WEBHOOK (HUBLA) ---
@@ -123,7 +145,7 @@ app.post('/webhooks/hubla', async (req, res) => {
   const hublaToken = Array.isArray(rawToken)
     ? rawToken[0]
     : typeof rawToken === 'string'
-      ? rawToken.replace(/^Bearer\s+/i, '').trim()
+      ? rawToken.replace(/^Bearer\\s+/i, '').trim()
       : undefined;
 
   // Log para depuração
@@ -202,7 +224,7 @@ app.post('/webhooks/hubla', async (req, res) => {
 
     if (!email) {
       console.error('ERRO: Email não encontrado no payload da Hubla:', JSON.stringify(event));
-      return res.status(200).send('Webhook recebido, mas sem email para processar'); // Retornamos 200 para a Hubla não ficar tentando reenviar um erro
+      return res.status(200).send('Webhook recebido, mas sem email para processar');
     }
 
     email = email.trim().toLowerCase();
@@ -223,14 +245,12 @@ app.post('/webhooks/hubla', async (req, res) => {
 
     // 2. LOGICA DE ACESSO AO APP (TABELA PROFILES)
     let isActive = false;
-    let subscriptionType = 'trial'; // default
+    let subscriptionType = 'trial';
 
-    // Status que LIBERAM ou MANTÊM o acesso (Busca por palavras-chave para ser ultra-flexível)
     const activeKeywords = [
       'completed', 'approved', 'renewed', 'active', 'granted', 'confirmed', 'paid', 'success'
     ];
 
-    // Status que BLOQUEIAM o acesso
     const inactiveKeywords = [
       'cancelled', 'refunded', 'expired', 'removed', 'chargeback', 'deactivated', 'failed'
     ];
@@ -242,7 +262,6 @@ app.post('/webhooks/hubla', async (req, res) => {
     if (isEventActive) {
       isActive = true;
 
-      // Lógica para definir o período baseado no produto ou recorrência
       const productName = (
         event.data?.product_name ||
         event.data?.product?.name ||
@@ -270,20 +289,17 @@ app.post('/webhooks/hubla', async (req, res) => {
         trialEndsAt.setMonth(trialEndsAt.getMonth() + 3);
         subscriptionType = 'trimestral';
       } else {
-        // Padrão: Mensal (ou 30 dias)
         trialEndsAt.setMonth(trialEndsAt.getMonth() + 1);
         subscriptionType = 'mensal';
       }
 
       console.log(`✅ [LIBERAÇÃO] Evento "${status}" reconhecido como ATIVO para ${email}. Expira em: ${trialEndsAt.toISOString()}`);
 
-      // Atualiza o perfil com a nova data de expiração e status ativo
-      // O campo subscription_active deve ser TRUE para indicar que é uma assinatura paga
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
           email: email.trim().toLowerCase(),
-          subscription_active: true, // Prioridade máxima: Assinatura paga
+          subscription_active: true,
           subscription_type: subscriptionType,
           trial_ends_at: trialEndsAt.toISOString(),
           last_webhook_event: status,
@@ -292,7 +308,6 @@ app.post('/webhooks/hubla', async (req, res) => {
 
       if (profileError) {
         console.error('❌ ERRO CRÍTICO ao atualizar perfil ativo via Webhook:', profileError);
-        // Tentar um segundo método de segurança caso o upsert falhe
         const { error: secondTryError } = await supabase
           .from('profiles')
           .update({
@@ -311,8 +326,6 @@ app.post('/webhooks/hubla', async (req, res) => {
       isActive = false;
       console.log(`❌ [BLOQUEIO] Evento "${status}" reconhecido como INATIVO para ${email}`);
 
-      // Se a assinatura foi cancelada ou expirou, removemos o acesso imediato
-      // mas mantemos o registro da última data por segurança
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
@@ -324,9 +337,7 @@ app.post('/webhooks/hubla', async (req, res) => {
 
       if (profileError) console.error('Erro ao desativar perfil:', profileError);
     } else {
-      // Se for um evento de "lead", "carrinho abandonado" ou outro que não mude o acesso
       console.log(`ℹ️ [INFO] Evento informativo recebido: ${status} para ${email}`);
-      // Vamos pelo menos registrar na tabela de vendas
       return res.status(200).send('Evento registrado para o dashboard');
     }
 
@@ -342,24 +353,19 @@ app.post('/webhooks/hubla', async (req, res) => {
 
 /**
  * Tenta extrair um JSON válido de qualquer string de texto.
- * Funciona mesmo se a IA responder "Aqui está o seu JSON: { ... }"
  */
 function extractJSON(text) {
   if (!text) return "{}";
 
   try {
-    // 1. Tenta limpar blocos de código markdown
     let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
-    // 2. Se já parecer JSON puro, retorna
     if ((cleanText.startsWith('{') && cleanText.endsWith('}')) ||
       (cleanText.startsWith('[') && cleanText.endsWith(']'))) {
       return cleanText;
     }
 
-    // 3. Regex para encontrar o primeiro objeto {} ou array []
-    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-
+    const jsonMatch = cleanText.match(/(\{[\\s\\S]*\\}|\\[[\\s\\S]*\\])/);
     if (jsonMatch) {
       return jsonMatch[0];
     }
@@ -372,13 +378,11 @@ function extractJSON(text) {
 }
 
 /**
- * Garante que o retorno seja um array, mesmo se a IA envolver em um objeto
- * Ex: { "questions": [...] } -> [...]
+ * Garante que o retorno seja um array
  */
 function ensureArray(data) {
   if (Array.isArray(data)) return data;
   if (data && typeof data === 'object') {
-    // Procura por qualquer propriedade que seja um array
     const possibleArray = Object.values(data).find(val => Array.isArray(val));
     if (possibleArray) return possibleArray;
   }
@@ -393,7 +397,7 @@ function parseSubjectList(input) {
   }
 
   return String(input || "")
-    .split(/[,;\n]/g)
+    .split(/[,;\\n]/g)
     .map(s => s.trim())
     .filter(Boolean);
 }
@@ -418,7 +422,6 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // --- YOUTUBE TRANSCRIPT EXTRACTOR ---
 function extractVideoId(url) {
   if (!url) return null;
-  // Suporta: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, youtube.com/shorts/ID
   const patterns = [
     /(?:youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
     /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
@@ -438,7 +441,6 @@ async function fetchYoutubeTranscript(videoUrl) {
 
   console.log(`[YouTube] Buscando transcrição do vídeo: ${videoId}`);
 
-  // 1. Pegar a página do vídeo para extrair metadados
   const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -449,24 +451,19 @@ async function fetchYoutubeTranscript(videoUrl) {
   if (!pageRes.ok) throw new Error('Não foi possível acessar o vídeo do YouTube.');
   const pageHtml = await pageRes.text();
 
-  // Extrair título do vídeo
   const titleMatch = pageHtml.match(/<title>([^<]*)<\/title>/);
   const videoTitle = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : 'Vídeo sem título';
 
-  // 2. Extrair captions/legendas do playerCaptionsTracklistRenderer
   const captionsMatch = pageHtml.match(/"captions":\s*(\{"playerCaptionsTracklistRenderer":\{[^}]*"captionTracks":\[.*?\]\})/);
   
   if (!captionsMatch) {
-    // Fallback: tentar extrair do timedtext API diretamente
     console.log('[YouTube] Captions não encontradas no HTML, tentando API direta...');
-    
-    // Tenta buscar legendas automáticas em português e inglês
     const langs = ['pt', 'pt-BR', 'en', 'a.pt', 'a.en'];
     for (const lang of langs) {
       try {
         const apiUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`;
         const ttRes = await fetch(apiUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
         if (ttRes.ok) {
           const ttData = await ttRes.json();
@@ -475,8 +472,8 @@ async function fetchYoutubeTranscript(videoUrl) {
               .filter(e => e.segs)
               .map(e => e.segs.map(s => s.utf8 || '').join(''))
               .join(' ')
-              .replace(/\n/g, ' ')
-              .replace(/\s+/g, ' ')
+              .replace(/\\n/g, ' ')
+              .replace(/\\s+/g, ' ')
               .trim();
             if (transcript.length > 50) {
               return { videoId, videoTitle, transcript, lang };
@@ -489,11 +486,9 @@ async function fetchYoutubeTranscript(videoUrl) {
     throw new Error('Este vídeo não possui legendas/transcrição disponíveis. Tente um vídeo que tenha legendas ativadas.');
   }
 
-  // 3. Parsear as tracks de legendas
   let captionsData;
   try {
-    // Extrair o JSON completo das captions
-    const fullCaptionsStr = pageHtml.match(/"captions":(\{.*?\}),"videoDetails/s);
+    const fullCaptionsStr = pageHtml.match(/"captions":(\\{.*?\\}),"videoDetails/s);
     if (fullCaptionsStr) {
       captionsData = JSON.parse(fullCaptionsStr[1]);
     }
@@ -506,8 +501,6 @@ async function fetchYoutubeTranscript(videoUrl) {
   }
 
   const tracks = captionsData.playerCaptionsTracklistRenderer.captionTracks;
-  
-  // Prioridade: pt-BR > pt > en > primeiro disponível
   const preferredLangs = ['pt-BR', 'pt', 'en'];
   let selectedTrack = null;
   for (const lang of preferredLangs) {
@@ -516,7 +509,6 @@ async function fetchYoutubeTranscript(videoUrl) {
   }
   if (!selectedTrack) selectedTrack = tracks[0];
 
-  // 4. Baixar a transcrição
   const transcriptUrl = selectedTrack.baseUrl + '&fmt=json3';
   const transcriptRes = await fetch(transcriptUrl);
   if (!transcriptRes.ok) throw new Error('Erro ao baixar transcrição do vídeo.');
@@ -526,8 +518,8 @@ async function fetchYoutubeTranscript(videoUrl) {
     .filter(e => e.segs)
     .map(e => e.segs.map(s => s.utf8 || '').join(''))
     .join(' ')
-    .replace(/\n/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/\\n/g, ' ')
+    .replace(/\\s+/g, ' ')
     .trim();
 
   if (transcript.length < 50) {
@@ -538,9 +530,159 @@ async function fetchYoutubeTranscript(videoUrl) {
   return { videoId, videoTitle, transcript, lang: selectedTrack.languageCode };
 }
 
+// --- SANITIZAÇÃO DE HISTÓRICO DE CHAT ---
+// Garante compatibilidade universal com Gemini, Groq, Mistral e OpenRouter:
+// 1. Primeiro item DEVE ser do papel 'user'
+// 2. Não deve haver mensagens consecutivas com o mesmo papel
+// 3. Ignora conteúdos vazios
+function sanitizeChatMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  
+  const normalized = [];
+  for (const m of messages) {
+    const rawRole = (m.role || 'user').toLowerCase();
+    const role = (rawRole === 'model' || rawRole === 'assistant') ? 'assistant' : 'user';
+    
+    let content = '';
+    if (typeof m.content === 'string') content = m.content.trim();
+    else if (typeof m.text === 'string') content = m.text.trim();
+    else if (Array.isArray(m.parts) && m.parts[0]?.text) content = m.parts[0].text.trim();
+
+    if (!content) continue;
+    normalized.push({ role, content });
+  }
+
+  if (normalized.length === 0) return [];
+
+  // Se a primeira mensagem for da IA (ex: saudação de boas-vindas do BizuBot), removemos para não quebrar a API
+  if (normalized[0].role === 'assistant') {
+    normalized.shift();
+  }
+
+  if (normalized.length === 0) return [];
+
+  // Agrupa mensagens consecutivas do mesmo papel
+  const collapsed = [];
+  for (const msg of normalized) {
+    if (collapsed.length > 0 && collapsed[collapsed.length - 1].role === msg.role) {
+      collapsed[collapsed.length - 1].content += "\\n\\n" + msg.content;
+    } else {
+      collapsed.push({ ...msg });
+    }
+  }
+
+  return collapsed;
+}
+
+// --- CHAMADA UNIFICADA GEMINI (SDK + REST DIRETO) ---
+async function callGemini(geminiInstance, modelName, prompt, isJson = false, history = null, configOverrides = {}) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  if (!apiKey) throw new Error("GEMINI_KEY_MISSING");
+
+  // 1. Tentativa via SDK oficial @google/genai
+  try {
+    if (geminiInstance && geminiInstance.models && typeof geminiInstance.models.generateContent === 'function') {
+      const contents = [];
+      if (history && history.length > 0) {
+        const sanitized = sanitizeChatMessages(history);
+        for (const msg of sanitized) {
+          contents.push({
+            role: msg.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: msg.content }]
+          });
+        }
+      }
+      if (prompt) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: prompt }]
+        });
+      }
+
+      const config = {
+        systemInstruction: BIZU_SYSTEM_PROMPT,
+        temperature: configOverrides.temperature !== undefined ? configOverrides.temperature : 0.7,
+        safetySettings: SAFETY_SETTINGS,
+        ...(isJson ? { responseMimeType: "application/json" } : {}),
+        ...(configOverrides.maxOutputTokens ? { maxOutputTokens: configOverrides.maxOutputTokens } : {})
+      };
+
+      const response = await geminiInstance.models.generateContent({
+        model: modelName,
+        contents,
+        config
+      });
+
+      const text = response.text || (response.candidates?.[0]?.content?.parts?.[0]?.text) || "";
+      return { text };
+    }
+  } catch (sdkErr) {
+    const isRateLimit = sdkErr.message?.includes("429") || sdkErr.message?.includes("Quota") || sdkErr.message?.includes("exhausted");
+    if (isRateLimit) {
+      console.warn(`⚠️ [Gemini SDK] Cota atingida no modelo ${modelName}. Repassando para fallback imediato...`);
+      throw sdkErr;
+    }
+    console.warn(`[Gemini SDK] Falha ao chamar via SDK (${modelName}): ${sdkErr.message}. Acionando REST direto...`);
+  }
+
+  // 2. Fallback via REST Oficial do Google Generative Language
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey.trim()}`;
+  const contents = [];
+  if (history && history.length > 0) {
+    const sanitized = sanitizeChatMessages(history);
+    for (const msg of sanitized) {
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      });
+    }
+  }
+  if (prompt) {
+    contents.push({
+      role: 'user',
+      parts: [{ text: prompt }]
+    });
+  }
+
+  const reqBody = {
+    system_instruction: {
+      parts: [{ text: BIZU_SYSTEM_PROMPT }]
+    },
+    contents,
+    generationConfig: {
+      temperature: configOverrides.temperature !== undefined ? configOverrides.temperature : 0.7,
+      ...(isJson ? { responseMimeType: "application/json" } : {}),
+      ...(configOverrides.maxOutputTokens ? { maxOutputTokens: configOverrides.maxOutputTokens } : {})
+    },
+    safetySettings: SAFETY_SETTINGS
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody)
+  });
+
+  const rawText = await response.text();
+  if (!response.ok) {
+    let errorMsg = rawText;
+    try {
+      const errorData = JSON.parse(rawText || "{}");
+      errorMsg = errorData.error?.message || rawText;
+    } catch (e) { }
+
+    if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+    throw new Error(errorMsg || `Erro Gemini REST: ${response.status}`);
+  }
+
+  const data = JSON.parse(rawText);
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return { text };
+}
+
 function getAI() {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  const openRouterKey = process.env.OPENAI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const mistralKey = process.env.MISTRAL_API_KEY;
 
@@ -548,12 +690,14 @@ function getAI() {
     throw new Error("API_KEY_MISSING");
   }
 
+  const defaultPreferred = geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter'));
+
   return {
     gemini: geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null,
     openRouter: openRouterKey ? {
       apiKey: openRouterKey,
       baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
-      model: process.env.AI_MODEL || 'qwen/qwen3-next-80b-a3b-instruct:free'
+      model: process.env.AI_MODEL || 'google/gemini-2.0-flash-001'
     } : null,
     groq: groqKey ? {
       apiKey: groqKey,
@@ -565,7 +709,7 @@ function getAI() {
       baseUrl: 'https://api.mistral.ai/v1',
       model: 'mistral-large-2411'
     } : null,
-    preferredProvider: process.env.AI_PROVIDER?.toLowerCase() || (geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter')))
+    preferredProvider: runtimePreferredProvider || process.env.AI_PROVIDER?.toLowerCase() || defaultPreferred
   };
 }
 
@@ -576,7 +720,7 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
     "Content-Type": "application/json"
   };
 
-  const messages = history ? [...history] : [];
+  const messages = history ? sanitizeChatMessages(history) : [];
   if (prompt) {
     messages.push({ role: "user", content: prompt });
   }
@@ -592,31 +736,27 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
     max_tokens: 4000
   };
 
-  try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(body)
-    });
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: headers,
+    body: JSON.stringify(body)
+  });
 
-    const rawText = await response.text();
+  const rawText = await response.text();
 
-    if (!response.ok) {
-      let errorMsg = rawText;
-      try {
-        const errorData = JSON.parse(rawText || "{}");
-        errorMsg = errorData.error?.message || rawText;
-      } catch (e) { }
+  if (!response.ok) {
+    let errorMsg = rawText;
+    try {
+      const errorData = JSON.parse(rawText || "{}");
+      errorMsg = errorData.error?.message || rawText;
+    } catch (e) { }
 
-      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
-      throw new Error(errorMsg || `Erro Groq: ${response.status}`);
-    }
-
-    const data = JSON.parse(rawText);
-    return { text: data.choices[0].message.content || "" };
-  } catch (error) {
-    throw error;
+    if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+    throw new Error(errorMsg || `Erro Groq: ${response.status}`);
   }
+
+  const data = JSON.parse(rawText);
+  return { text: data.choices[0].message.content || "" };
 }
 
 // --- CHAMADA MISTRAL ---
@@ -626,7 +766,7 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
     "Content-Type": "application/json"
   };
 
-  const messages = history ? [...history] : [];
+  const messages = history ? sanitizeChatMessages(history) : [];
   if (prompt) {
     messages.push({ role: "user", content: prompt });
   }
@@ -642,31 +782,27 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
     max_tokens: 4000
   };
 
-  try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(body)
-    });
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: headers,
+    body: JSON.stringify(body)
+  });
 
-    const rawText = await response.text();
+  const rawText = await response.text();
 
-    if (!response.ok) {
-      let errorMsg = rawText;
-      try {
-        const errorData = JSON.parse(rawText || "{}");
-        errorMsg = errorData.error?.message || rawText;
-      } catch (e) { }
+  if (!response.ok) {
+    let errorMsg = rawText;
+    try {
+      const errorData = JSON.parse(rawText || "{}");
+      errorMsg = errorData.error?.message || rawText;
+    } catch (e) { }
 
-      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
-      throw new Error(errorMsg || `Erro Mistral: ${response.status}`);
-    }
-
-    const data = JSON.parse(rawText);
-    return { text: data.choices[0].message.content || "" };
-  } catch (error) {
-    throw error;
+    if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+    throw new Error(errorMsg || `Erro Mistral: ${response.status}`);
   }
+
+  const data = JSON.parse(rawText);
+  return { text: data.choices[0].message.content || "" };
 }
 
 // --- CHAMADA OPENROUTER (FALLBACK) ---
@@ -678,7 +814,7 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
     "X-Title": "Bizu App"
   };
 
-  const messages = history ? [...history] : [];
+  const messages = history ? sanitizeChatMessages(history) : [];
   if (prompt) {
     messages.push({ role: "user", content: prompt });
   }
@@ -694,46 +830,42 @@ async function callOpenRouter(config, prompt, isJson = false, history = null, sp
     max_tokens: 4000
   };
 
-  try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(body)
-    });
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: headers,
+    body: JSON.stringify(body)
+  });
 
-    const rawText = await response.text();
+  const rawText = await response.text();
 
-    if (!response.ok) {
-      let errorMsg = rawText;
-      try {
-        const errorData = JSON.parse(rawText || "{}");
-        errorMsg = errorData.error?.message || rawText;
-      } catch (e) { }
-
-      if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
-      throw new Error(errorMsg || `Erro OpenRouter: ${response.status}`);
-    }
-
-    if (!rawText || rawText.trim() === "") throw new Error("Resposta vazia do OpenRouter");
-
-    let data;
+  if (!response.ok) {
+    let errorMsg = rawText;
     try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      throw new Error("Resposta inválida do OpenRouter (JSON corrompido)");
-    }
+      const errorData = JSON.parse(rawText || "{}");
+      errorMsg = errorData.error?.message || rawText;
+    } catch (e) { }
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error("Formato de resposta inesperado do OpenRouter");
-    }
-
-    return { text: data.choices[0].message.content || "" };
-  } catch (error) {
-    throw error;
+    if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
+    throw new Error(errorMsg || `Erro OpenRouter: ${response.status}`);
   }
+
+  if (!rawText || rawText.trim() === "") throw new Error("Resposta vazia do OpenRouter");
+
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error("Resposta inválida do OpenRouter (JSON corrompido)");
+  }
+
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error("Formato de resposta inesperado do OpenRouter");
+  }
+
+  return { text: data.choices[0].message.content || "" };
 }
 
-// --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK ---
+// --- EXECUTOR UNIVERSAL COM MULTI-FALLBACK SEM BLOQUEIOS ---
 async function runWithModelFallback(ai, actionName, payload) {
   // --- PRÉ-PROCESSAMENTO: Buscar info do YouTube ANTES de escolher a IA ---
   if (actionName === 'extractYoutubeContent' && !payload._transcriptFetched) {
@@ -741,14 +873,11 @@ async function runWithModelFallback(ai, actionName, payload) {
     
     try {
       const { videoId, videoTitle, transcript, lang } = await fetchYoutubeTranscript(payload.youtubeUrl);
-      
-      // Limitar a transcrição para não estourar tokens
       const maxChars = 12000;
       const trimmedTranscript = transcript.length > maxChars 
         ? transcript.substring(0, maxChars) + '... [transcrição cortada por limite de tamanho]'
         : transcript;
 
-      // Modo COM TRANSCRIÇÃO — material mais preciso
       payload._transcriptFetched = true;
       payload._hasTranscript = true;
       payload._videoId = videoId;
@@ -759,7 +888,6 @@ async function runWithModelFallback(ai, actionName, payload) {
     } catch (transcriptError) {
       console.warn(`[YouTube] ⚠️ Transcrição não disponível: ${transcriptError.message}`);
       
-      // Modo SEM TRANSCRIÇÃO — coleta TODOS os metadados possíveis do vídeo
       const videoId = extractVideoId(payload.youtubeUrl);
       if (!videoId) throw new Error('URL do YouTube inválida. Verifique o link e tente novamente.');
 
@@ -768,7 +896,6 @@ async function runWithModelFallback(ai, actionName, payload) {
       let channelName = '';
       let videoTags = '';
 
-      // ============ MÉTODO 1: API oEmbed do YouTube (mais confiável pra título) ============
       try {
         const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
         const oembedRes = await fetch(oembedUrl);
@@ -782,7 +909,6 @@ async function runWithModelFallback(ai, actionName, payload) {
         console.warn('[YouTube] oEmbed falhou:', e.message);
       }
 
-      // ============ MÉTODO 2: Scraping do HTML do YouTube (pra descrição, tags e fallback do título) ============
       try {
         const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
           headers: {
@@ -792,14 +918,11 @@ async function runWithModelFallback(ai, actionName, payload) {
         });
         if (pageRes.ok) {
           const html = await pageRes.text();
-          
-          // Fallback do título se oEmbed falhou
           if (!videoTitle) {
             const titleMatch = html.match(/<title>([^<]*)<\/title>/);
             if (titleMatch) videoTitle = titleMatch[1].replace(' - YouTube', '').trim();
           }
 
-          // Pegar a descrição do vídeo (shortDescription é mais confiável)
           const descMatch = html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
           if (descMatch) {
             videoDescription = descMatch[1]
@@ -809,19 +932,16 @@ async function runWithModelFallback(ai, actionName, payload) {
               .substring(0, 2000);
           }
 
-          // Pegar tags/keywords do vídeo
           const keywordsMatch = html.match(/<meta name="keywords" content="([^"]*)">/);
           if (keywordsMatch) {
             videoTags = keywordsMatch[1];
           }
 
-          // Pegar o nome do canal se ainda não tiver
           if (!channelName) {
             const channelMatch = html.match(/"ownerChannelName":"([^"]*)"/);
             if (channelMatch) channelName = channelMatch[1];
           }
 
-          // Tentar pegar categorias do vídeo
           const categoryMatch = html.match(/"category":"([^"]*)"/);
           if (categoryMatch) {
             payload._videoCategory = categoryMatch[1];
@@ -831,16 +951,14 @@ async function runWithModelFallback(ai, actionName, payload) {
         console.warn('[YouTube] Scraping do HTML falhou:', e.message);
       }
 
-      // Se NADA funcionou, usar um título genérico
       if (!videoTitle) videoTitle = 'Vídeo do YouTube';
 
-      // Montar uma descrição rica pra IA
       let fullContext = '';
-      if (videoTitle) fullContext += `TÍTULO DO VÍDEO: "${videoTitle}"\n`;
-      if (channelName) fullContext += `CANAL/PROFESSOR: ${channelName}\n`;
-      if (videoTags) fullContext += `PALAVRAS-CHAVE: ${videoTags}\n`;
-      if (payload._videoCategory) fullContext += `CATEGORIA: ${payload._videoCategory}\n`;
-      if (videoDescription) fullContext += `DESCRIÇÃO DO VÍDEO:\n${videoDescription}\n`;
+      if (videoTitle) fullContext += `TÍTULO DO VÍDEO: "${videoTitle}"\\n`;
+      if (channelName) fullContext += `CANAL/PROFESSOR: ${channelName}\\n`;
+      if (videoTags) fullContext += `PALAVRAS-CHAVE: ${videoTags}\\n`;
+      if (payload._videoCategory) fullContext += `CATEGORIA: ${payload._videoCategory}\\n`;
+      if (videoDescription) fullContext += `DESCRIÇÃO DO VÍDEO:\\n${videoDescription}\\n`;
 
       payload._transcriptFetched = true;
       payload._hasTranscript = false;
@@ -851,33 +969,15 @@ async function runWithModelFallback(ai, actionName, payload) {
       payload._channelName = channelName;
       payload._videoTags = videoTags;
       payload._fullContext = fullContext;
-      console.log(`[YouTube] 📝 Dados coletados SEM transcrição:`);
-      console.log(`  → Título: "${videoTitle}"`);
-      console.log(`  → Canal: "${channelName}"`);
-      console.log(`  → Tags: "${videoTags}"`);
-      console.log(`  → Descrição: ${videoDescription.length} chars`);
     }
   }
 
-  // --- ORDEM DE PRIORIDADE DOS PROVEDORES ---
-  // Prioridade 1: Gemini (Pelo limite massivo de tokens e estabilidade)
-  // Prioridade 2: Mistral (Reforço de 1 Bilhão de tokens)
-  // Prioridade 3: Groq (Pela velocidade quando houver limite disponível)
+  // Monta a ordem de provedores priorizando a preferência do Admin
   let providersToTry = ['gemini', 'mistral', 'groq', 'openrouter'];
+  const preferred = (ai.preferredProvider || '').toLowerCase();
 
-  if (ai.preferredProvider && providersToTry.includes(ai.preferredProvider)) {
-    providersToTry = [ai.preferredProvider, ...providersToTry.filter(p => p !== ai.preferredProvider)];
-  }
-
-  // Se a ação for relacionada a materiais, coloca o Gemini como prioridade máxima
-  // mas mantém o preferredProvider se ele estiver na lista de prioridades
-  if (actionName === 'generateMaterials' || actionName === 'generateMaterialContent' || actionName === 'createCustomMaterial' || actionName === 'generateStudyMaterials') {
-    const basePriority = ['gemini', 'mistral', 'groq', 'openrouter'];
-    if (ai.preferredProvider && basePriority.includes(ai.preferredProvider)) {
-      providersToTry = [ai.preferredProvider, ...basePriority.filter(p => p !== ai.preferredProvider)];
-    } else {
-      providersToTry = basePriority;
-    }
+  if (preferred && providersToTry.includes(preferred)) {
+    providersToTry = [preferred, ...providersToTry.filter(p => p !== preferred)];
   }
 
   for (const provider of providersToTry) {
@@ -903,28 +1003,8 @@ async function runWithModelFallback(ai, actionName, payload) {
             if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
             if (actionName === 'extractYoutubeContent') return await handleExtractYoutubeContent(ai.gemini, model, payload);
           } catch (error) {
-            if (error.message.includes("429") || error.message.includes("Quota") || error.message.includes("exhausted")) {
-              console.warn(`⚠️ Gemini ${model} atingiu limite. Aguardando 60 segundos para resetar...`);
-              await sleep(60000);
-
-              try {
-                console.log(`[Gemini] Retentando ${actionName} com ${model} após espera...`);
-                if (actionName === 'generateQuiz') return await handleGenerateQuiz(ai.gemini, model, payload);
-                if (actionName === 'askTutor') return await handleAskTutor(ai.gemini, model, payload);
-                if (actionName === 'generateMaterials') return await handleGenerateMaterials(ai.gemini, model, payload);
-                if (actionName === 'generateMaterialContent') return await handleGenerateMaterialContent(ai.gemini, model, payload);
-                if (actionName === 'extendMaterialContent') return await handleExtendMaterialContent(ai.gemini, model, payload);
-                if (actionName === 'generateStudyMaterials') return await handleGenerateStudyMaterials(ai.gemini, model, payload);
-                if (actionName === 'createCustomMaterial') return await handleCreateCustomMaterial(ai.gemini, model, payload);
-                if (actionName === 'generateRoutine') return await handleGenerateRoutine(ai.gemini, model, payload);
-                if (actionName === 'updateRadar') return await handleUpdateRadar(ai.gemini, model, payload);
-                if (actionName === 'extractYoutubeContent') return await handleExtractYoutubeContent(ai.gemini, model, payload);
-              } catch (retryError) {
-                console.warn(`⚠️ Gemini ${model} falhou novamente após espera: ${retryError.message}.`);
-              }
-            }
-            console.warn(`⚠️ Gemini ${model} falhou: ${error.message}.`);
-            continue;
+            console.warn(`⚠️ Gemini ${model} falhou: ${error.message}. Acionando próximo modelo ou provedor imediatamente...`);
+            continue; // Fallback instantâneo, ZERO espera de 60s
           }
         }
       }
@@ -951,7 +1031,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const skeletonRes = await callMistral(ai.mistral, skeletonPrompt, true, null, model);
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
-                let fullContent = skeleton.intro + "\n\n";
+                let fullContent = skeleton.intro + "\\n\\n";
                 const parts = [
                   "Conceitos Fundamentais e Doutrina",
                   "Desenvolvimento Técnico e Detalhamento",
@@ -966,8 +1046,8 @@ async function runWithModelFallback(ai, actionName, payload) {
                   Retorne apenas o texto em Markdown.`;
 
                   const contentRes = await callMistral(ai.mistral, contentPrompt, false, null, model);
-                  fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
-                  await sleep(1000);
+                  fullContent += `## ${part}\\n\\n` + contentRes.text + "\\n\\n";
+                  await sleep(300);
                 }
 
                 allMaterials.push({
@@ -980,38 +1060,28 @@ async function runWithModelFallback(ai, actionName, payload) {
               }
               return allMaterials;
             } else if (actionName === 'generateQuiz') {
-              const batchSize = 5;
+              const batchSize = 10;
               const totalQuestions = Math.min(payload.numberOfQuestions, 100);
               let allQuestions = [];
               const numBatches = Math.ceil(totalQuestions / batchSize);
 
               for (let i = 0; i < numBatches; i++) {
                 const currentBatchSize = Math.min(batchSize, totalQuestions - allQuestions.length);
+                if (currentBatchSize <= 0) break;
+
                 const batchPrompt = `Gere ${currentBatchSize} questões de nível "${payload.difficulty}" sobre "${payload.topic}".
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
 
-                let success = false;
-                let retryCount = 0;
-                while (!success && retryCount < 3) {
-                  try {
-                    const res = await callMistral(ai.mistral, batchPrompt, true, null, model);
-                    const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-                    allQuestions = [...allQuestions, ...batchQuestions];
-                    success = true;
-                    await sleep(1000);
-                  } catch (err) {
-                    retryCount++;
-                    if (err.message.includes("RATE_LIMIT")) await sleep(2000);
-                    else throw err;
-                  }
-                }
+                const res = await callMistral(ai.mistral, batchPrompt, true, null, model);
+                const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text))).map((q, qIdx) => ({
+                  ...q,
+                  id: q.id && q.id !== 'uuid' && q.id !== 'string' ? String(q.id) : `q-${Date.now()}-${allQuestions.length + qIdx}-${Math.random().toString(36).substring(2, 7)}`
+                }));
+                allQuestions = [...allQuestions, ...batchQuestions];
               }
               return allQuestions;
             } else if (actionName === 'askTutor') {
-              history = (payload.history || []).map(m => ({
-                role: m.role === 'model' ? 'assistant' : 'user',
-                content: m.parts[0].text
-              }));
+              history = payload.history;
               prompt = payload.message;
             } else if (actionName === 'generateMaterials') {
               prompt = `Você é um Especialista em Concursos. Liste ${payload.count} materiais de estudo de alta qualidade.
@@ -1124,7 +1194,7 @@ async function runWithModelFallback(ai, actionName, payload) {
                 const skeletonRes = await callGroq(ai.groq, skeletonPrompt, true, null, model);
                 const skeleton = JSON.parse(extractJSON(skeletonRes.text));
 
-                let fullContent = skeleton.intro + "\n\n";
+                let fullContent = skeleton.intro + "\\n\\n";
                 const parts = [
                   "Conceitos Fundamentais e Doutrina",
                   "Desenvolvimento Técnico e Detalhamento",
@@ -1139,8 +1209,8 @@ async function runWithModelFallback(ai, actionName, payload) {
                   Retorne apenas o texto em Markdown.`;
 
                   const contentRes = await callGroq(ai.groq, contentPrompt, false, null, model);
-                  fullContent += `## ${part}\n\n` + contentRes.text + "\n\n";
-                  await sleep(2000);
+                  fullContent += `## ${part}\\n\\n` + contentRes.text + "\\n\\n";
+                  await sleep(300);
                 }
 
                 allMaterials.push({
@@ -1154,7 +1224,7 @@ async function runWithModelFallback(ai, actionName, payload) {
               return allMaterials;
             } else if (actionName === 'generateQuiz') {
               const isAcademico = payload.studyType === 'academico';
-              const batchSize = 5;
+              const batchSize = 10;
               const totalQuestions = Math.min(payload.numberOfQuestions, 100);
               let allQuestions = [];
               const numBatches = Math.ceil(totalQuestions / batchSize);
@@ -1167,32 +1237,16 @@ async function runWithModelFallback(ai, actionName, payload) {
                 IMPORTANTE: NÃO gere questões sobre o exame em si. Gere questões sobre o CONTEÚDO que cai na prova (ex: se o tema for ENEM, escolha Biologia, História, etc).
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
 
-                let success = false;
-                let retryCount = 0;
-                while (!success && retryCount < 3) {
-                  try {
-                    const res = await callGroq(ai.groq, batchPrompt, true, null, model);
-                    const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
-                    allQuestions = [...allQuestions, ...batchQuestions];
-                    success = true;
-                    if (numBatches > 1) await sleep(2000);
-                  } catch (err) {
-                    retryCount++;
-                    if (err.message.includes("RATE_LIMIT") || err.message.includes("429")) {
-                      console.log(`[Groq] Rate limit atingido. Esperando 5 segundos...`);
-                      await sleep(5000);
-                    } else {
-                      throw err;
-                    }
-                  }
-                }
+                const res = await callGroq(ai.groq, batchPrompt, true, null, model);
+                const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text))).map((q, qIdx) => ({
+                  ...q,
+                  id: q.id && q.id !== 'uuid' && q.id !== 'string' ? String(q.id) : `q-${Date.now()}-${allQuestions.length + qIdx}-${Math.random().toString(36).substring(2, 7)}`
+                }));
+                allQuestions = [...allQuestions, ...batchQuestions];
               }
               return allQuestions;
             } else if (actionName === 'askTutor') {
-              history = (payload.history || []).map(m => ({
-                role: m.role === 'model' ? 'assistant' : 'user',
-                content: m.parts[0].text
-              }));
+              history = payload.history;
               prompt = payload.message;
             } else if (actionName === 'generateMaterials') {
               const isAcademico = payload.studyType === 'academico';
@@ -1223,7 +1277,7 @@ async function runWithModelFallback(ai, actionName, payload) {
             } else if (actionName === 'updateRadar') {
               const isAcademico = payload.studyType === 'academico';
               prompt = `Liste 5 ${isAcademico ? 'Vestibulares/Exames' : 'concursos'} IMPORTANTES de 2026.
-              JSON Array: [{"institution":"Nome","title":"Cargo/Prova","forecast":"Previsão","status":"Status","salary":"${isAcademico ? 'Inscrição' : 'R$'}","board":"Banca","url":""}]`;
+              JSON Array: [{"institution":"Nome","title":"Cargo/Prova","forecast":"Previsão","status":"Status","salary":"${isAcademico ? 'Inscrição' : 'R$'}", "board":"Banca","url":""}]`;
               isJson = true;
             } else if (actionName === 'createCustomMaterial') {
               const isAcademico = payload.studyType === 'academico';
@@ -1291,8 +1345,6 @@ async function runWithModelFallback(ai, actionName, payload) {
         }
       }
 
-
-
       // --- TENTANDO OPENROUTER ---
       if (provider === 'openrouter' && ai.openRouter) {
         let models = [ai.openRouter.model, ...OPENROUTER_MODELS.filter(m => m !== ai.openRouter.model)];
@@ -1320,15 +1372,15 @@ async function runWithModelFallback(ai, actionName, payload) {
                 Responda APENAS JSON. Schema: [{id, text, options:[], correctAnswerIndex:number, explanation}]`;
 
                 const res = await callOpenRouter(ai.openRouter, batchPrompt, true, null, model);
-                const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text)));
+                const batchQuestions = ensureArray(JSON.parse(extractJSON(res.text))).map((q, qIdx) => ({
+                  ...q,
+                  id: q.id && q.id !== 'uuid' && q.id !== 'string' ? String(q.id) : `q-${Date.now()}-${allQuestions.length + qIdx}-${Math.random().toString(36).substring(2, 7)}`
+                }));
                 allQuestions = [...allQuestions, ...batchQuestions];
               }
               return allQuestions;
             } else if (actionName === 'askTutor') {
-              history = (payload.history || []).map(m => ({
-                role: m.role === 'model' ? 'assistant' : 'user',
-                content: m.parts[0].text
-              }));
+              history = payload.history;
               prompt = payload.message;
             } else if (actionName === 'generateMaterials') {
               const isAcademico = payload.studyType === 'academico';
@@ -1359,7 +1411,7 @@ async function runWithModelFallback(ai, actionName, payload) {
             } else if (actionName === 'updateRadar') {
               const isAcademico = payload.studyType === 'academico';
               prompt = `Liste 5 ${isAcademico ? 'Vestibulares/Exames' : 'concursos'} IMPORTANTES de 2026.
-              JSON Array: [{"institution":"Nome","title":"Cargo/Prova","forecast":"Previsão","status":"Status","salary":"${isAcademico ? 'Inscrição' : 'R$'}","board":"Banca","url":""}]`;
+              JSON Array: [{"institution":"Nome","title":"Cargo/Prova","forecast":"Previsão","status":"Status","salary":"${isAcademico ? 'Inscrição' : 'R$'}", "board":"Banca","url":""}]`;
               isJson = true;
             } else if (actionName === 'createCustomMaterial') {
               const isAcademico = payload.studyType === 'academico';
@@ -1428,27 +1480,19 @@ async function runWithModelFallback(ai, actionName, payload) {
       }
     } catch (providerError) {
       console.error(`🚨 Falha crítica no provedor ${provider}:`, providerError.message);
-      continue; // Próximo provedor se este falhar miseravelmente
+      continue;
     }
   }
 
-  throw new Error("Todas as IAs e modelos (Gemini, Mistral, Groq e OpenRouter) atingiram o limite de uso.");
+  throw new Error("Todas as IAs e modelos (Gemini, Mistral, Groq e OpenRouter) atingiram o limite de uso temporário.");
 }
 
-// --- AÇÕES ---
+// --- HANDLERS DEDICADOS GEMINI ---
 
 async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberOfQuestions, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: { responseMimeType: "application/json" },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const batchSize = 10;
   const totalQuestions = Math.min(numberOfQuestions, 100);
   let allQuestions = [];
-
   const numBatches = Math.ceil(totalQuestions / batchSize);
 
   for (let i = 0; i < numBatches; i++) {
@@ -1471,80 +1515,35 @@ async function handleGenerateQuiz(genAI, modelName, { topic, difficulty, numberO
     Responda APENAS o JSON Array.
     Schema: [{"id": "uuid", "text": "enunciado", "options": ["A", "B", "C", "D", "E"], "correctAnswerIndex": 0, "explanation": "..."}]`;
 
-    let success = false;
-    while (!success) {
-      try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        const batchQuestions = ensureArray(JSON.parse(extractJSON(text)));
-        allQuestions = [...allQuestions, ...batchQuestions];
-        success = true; // Lote concluído com sucesso
-      } catch (err) {
-        // Se for erro de limite (429), espera 60s e tenta o MESMO lote novamente
-        if (err.message.includes("429") || err.message.includes("Quota") || err.message.includes("exhausted")) {
-          console.warn(`⚠️ Limite atingido no lote ${i + 1}. Aguardando 60s para tentar novamente este mesmo lote...`);
-          await sleep(60000);
-          // O loop 'while(!success)' fará a retentativa automática
-        } else {
-          // Para outros erros (segurança, sintaxe, etc), loga e tenta avançar ou falhar
-          console.error(`Erro crítico no lote ${i + 1}:`, err.message);
-          if (allQuestions.length > 0) {
-            success = true; // Força saída deste lote para retornar o que já temos
-            break;
-          }
-          throw err;
-        }
-      }
-    }
+    const result = await callGemini(genAI, modelName, prompt, true);
+    const batchQuestions = ensureArray(JSON.parse(extractJSON(result.text))).map((q, qIdx) => ({
+      ...q,
+      id: q.id && q.id !== 'uuid' && q.id !== 'string' ? String(q.id) : `q-${Date.now()}-${allQuestions.length + qIdx}-${Math.random().toString(36).substring(2, 7)}`
+    }));
+    allQuestions = [...allQuestions, ...batchQuestions];
   }
 
   return allQuestions;
 }
 
 async function handleAskTutor(genAI, modelName, { history, message }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    safetySettings: SAFETY_SETTINGS
-  });
-
-  const chat = model.startChat({
-    history: (history || []).slice(-6)
-  });
-
-  const result = await chat.sendMessage(message);
-  return { text: result.response.text() };
+  const result = await callGemini(genAI, modelName, message, false, history || []);
+  return { text: result.text };
 }
 
 async function handleGenerateMaterials(genAI, modelName, { count, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: { responseMimeType: "application/json" },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const prompt = `Você é um Mentor de Estudos e Professor Especialista. Liste ${count} materiais de estudo de alta qualidade.
   Perfil de Estudo do Usuário: ${studyType === 'academico' ? 'ENEM / VESTIBULAR / ACADÊMICO' : 'CONCURSO PÚBLICO'}.
   
   Os materiais devem ser do tipo: "Apostila Completa" ou "Resumo Estratégico".
   Gere sugestões EXATAMENTE para o perfil acima.
   JSON Array: [{"title": "Título da Apostila", "category": "Disciplina", "type": "PDF", "duration": "Número de Páginas/Tempo", "summary": "Breve resumo técnico/estratégico do que será abordado"}]`;
-  const result = await model.generateContent(prompt);
-  return ensureArray(JSON.parse(extractJSON(result.response.text())));
+
+  const result = await callGemini(genAI, modelName, prompt, true);
+  return ensureArray(JSON.parse(extractJSON(result.text)));
 }
 
 async function handleGenerateMaterialContent(genAI, modelName, { material, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 4000,
-    },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const sections = [
     {
       name: "Título e Introdução",
@@ -1596,7 +1595,7 @@ async function handleGenerateMaterialContent(genAI, modelName, { material, study
     Perfil de Estudo do Usuário: ${studyType === 'academico' ? 'ENEM / VESTIBULAR / ACADÊMICO' : 'CONCURSO PÚBLICO'}.
     
     ESTA PARTE DEVE CONTER:
-    ${section.items.join("\n")}
+    ${section.items.join("\\n")}
     
     DIRETRIZES DE QUALIDADE:
     1. DETALHAMENTO: Não seja superficial. Explique o "porquê" das coisas.
@@ -1610,26 +1609,11 @@ async function handleGenerateMaterialContent(genAI, modelName, { material, study
     CONTEÚDO JÁ GERADO (PARA CONTEXTO):
     ${fullContent.slice(-2000)} ...`;
 
-    try {
-      console.log(`[Material] Gerando ${section.name}...`);
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      fullContent += "\n\n" + text;
-
-      // Como o usuário pediu para "gerar um pouco e esperar", vamos aguardar um pouco entre as partes
-      // mas apenas se houver mais partes a serem geradas.
-      if (i < sections.length - 1) {
-        console.log(`[Material] Parte ${i + 1} concluída. Aguardando reset de limite (2s)...`);
-        await sleep(2000); // Reduzido de 60s para 2s para evitar timeout
-      }
-    } catch (err) {
-      if (err.message.includes("429") || err.message.includes("Quota")) {
-        console.warn(`⚠️ Limite atingido na geração do material. Aguardando 60s para continuar...`);
-        await sleep(60000);
-        i--; // Tenta a mesma seção novamente
-        continue;
-      }
-      throw err;
+    console.log(`[Material] Gerando ${section.name}...`);
+    const result = await callGemini(genAI, modelName, prompt, false, null, { temperature: 0.4, maxOutputTokens: 4000 });
+    fullContent += "\\n\\n" + result.text;
+    if (i < sections.length - 1) {
+      await sleep(1000);
     }
   }
 
@@ -1637,13 +1621,6 @@ async function handleGenerateMaterialContent(genAI, modelName, { material, study
 }
 
 async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subjects, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: { responseMimeType: "application/json" },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const prioritySubjects = parseSubjectList(subjects);
   const minDistinct = Math.max(5, Math.min(10, prioritySubjects.length + 3));
 
@@ -1688,16 +1665,10 @@ async function handleGenerateRoutine(genAI, modelName, { targetExam, hours, subj
   for (let attempt = 0; attempt < 2; attempt++) {
     const attemptPrompt = attempt === 0
       ? prompt
-      : `${prompt}
+      : `${prompt}\\n\\nRESTRIÇÕES ADICIONAIS (REFORÇO):\\n- Se vier só 1 matéria na lista de prioridade, NÃO faça rotina só dela.\\n- Garanta pelo menos ${minDistinct} matérias distintas ao longo da semana.\\n- Segunda a sábado: inclua pelo menos 2 matérias diferentes por dia.`;
 
-RESTRIÇÕES ADICIONAIS (REFORÇO):
-- Se vier só 1 matéria na lista de prioridade, NÃO faça rotina só dela.
-- Garanta pelo menos ${minDistinct} matérias distintas ao longo da semana.
-- Segunda a sábado: inclua pelo menos 2 matérias diferentes por dia.`;
-
-    const result = await model.generateContent(attemptPrompt);
-    const text = result.response.text();
-    parsed = JSON.parse(extractJSON(text));
+    const result = await callGemini(genAI, modelName, attemptPrompt, true);
+    parsed = JSON.parse(extractJSON(result.text));
 
     if (countDistinctRoutineSubjects(parsed) >= minDistinct) break;
   }
@@ -1710,16 +1681,8 @@ RESTRIÇÕES ADICIONAIS (REFORÇO):
 }
 
 async function handleUpdateRadar(genAI, modelName, { existingTitles: titlesArray, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: { responseMimeType: "application/json" },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const today = new Date().toLocaleDateString('pt-BR');
   const existingTitles = Array.isArray(titlesArray) ? titlesArray.join(", ") : "Nenhum";
-
   const isAcademico = studyType === 'academico';
 
   const prompt = `Você é um Analista de ${isAcademico ? 'Exames Acadêmicos (ENEM e Vestibulares)' : 'Concursos Públicos'}. Hoje é dia ${today}.
@@ -1734,8 +1697,8 @@ async function handleUpdateRadar(genAI, modelName, { existingTitles: titlesArray
   Schema (se houver novidade): [{"institution":"Nome da Instituição/Faculdade","title":"Cargo ou Nome da Prova","forecast":"Previsão da Prova/Edital","status":"Inscrições Abertas/Previsto/Edital Publicado","salary":"${isAcademico ? 'Valor da Inscrição' : 'R$ Inicial'}","board":"Banca Organizadora","url":""}]
   Schema (se NÃO houver novidade): {"no_updates": true}`;
 
-  const result = await model.generateContent(prompt);
-  const text = extractJSON(result.response.text());
+  const result = await callGemini(genAI, modelName, prompt, true);
+  const text = extractJSON(result.text);
   const parsed = JSON.parse(text);
 
   if (parsed.no_updates) {
@@ -1746,13 +1709,6 @@ async function handleUpdateRadar(genAI, modelName, { existingTitles: titlesArray
 }
 
 async function handleCreateCustomMaterial(genAI, modelName, { topic, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: { responseMimeType: "application/json" },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const prompt = `Você é um Especialista em Educação e Mentor de Estudos.
   Perfil de Estudo: ${studyType === 'academico' ? 'ENEM / VESTIBULAR / ACADÊMICO' : 'CONCURSO PÚBLICO'}.
   Crie um material de estudo estratégico baseado no seguinte tema: "${topic}".
@@ -1765,21 +1721,11 @@ async function handleCreateCustomMaterial(genAI, modelName, { topic, studyType }
     "summary": "Breve resumo técnico/estratégico do que será abordado na apostila completa"
   }`;
 
-  const result = await model.generateContent(prompt);
-  return JSON.parse(extractJSON(result.response.text()));
+  const result = await callGemini(genAI, modelName, prompt, true);
+  return JSON.parse(extractJSON(result.text));
 }
 
 async function handleExtendMaterialContent(genAI, modelName, { material, currentContent, studyType }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    generationConfig: {
-      temperature: 0.5,
-      maxOutputTokens: 4000,
-    },
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const prompt = `Você é um Professor de Elite e Autor de Materiais Didáticos. 
   O aluno já estudou a parte inicial da apostila sobre "${material.title}" e agora quer APROFUNDAR ainda mais.
   
@@ -1795,34 +1741,19 @@ async function handleExtendMaterialContent(genAI, modelName, { material, current
   CONTEÚDO JÁ EXISTENTE (PARA VOCÊ SABER O QUE NÃO REPETIR):
   ${currentContent.slice(-3000)} ...`;
 
-  try {
-    console.log(`[Material] Estendendo conteúdo para "${material.title}"...`);
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    return { content: text };
-  } catch (err) {
-    console.error("Erro ao estender material:", err.message);
-    throw err;
-  }
+  console.log(`[Material] Estendendo conteúdo para "${material.title}"...`);
+  const result = await callGemini(genAI, modelName, prompt, false, null, { temperature: 0.5, maxOutputTokens: 4000 });
+  return { content: result.text };
 }
 
 async function handleExtractYoutubeContent(genAI, modelName, payload) {
   const { _videoTitle, _videoId, _transcript, _hasTranscript, _videoDescription, studyType } = payload;
-
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const isAcademico = studyType === 'academico';
   let prompt;
 
   if (_hasTranscript && _transcript) {
-    // MODO 1: COM TRANSCRIÇÃO — material baseado no que foi dito no vídeo
     console.log(`[YouTube/Gemini] Gerando apostila a partir da TRANSCRIÇÃO: "${_videoTitle}"`);
     prompt = `Você é o BizuBot, um Professor Especialista de Elite.
-  
     O aluno assistiu a uma videoaula e eu vou te passar a TRANSCRIÇÃO COMPLETA desse vídeo.
     Sua missão é transformar todo o conteúdo dessa videoaula em uma APOSTILA DE ESTUDO completa, profissional e extremamente detalhada.
     
@@ -1830,16 +1761,12 @@ async function handleExtractYoutubeContent(genAI, modelName, payload) {
     PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
     
     DIRETRIZES OBRIGATÓRIAS:
-    1. **EXTRAIA TODO O CONTEÚDO**: Cubra TODOS os tópicos, conceitos, fórmulas, datas, nomes, leis, exemplos e explicações mencionados no vídeo.
-    2. **ORGANIZE EM TÓPICOS**: Crie uma estrutura clara com títulos (H1, H2, H3), separando cada assunto abordado.
-    3. **ENRIQUEÇA**: Adicione detalhes extras que complementem o que foi falado, como:
-       - Macetes de memorização ("Bizu")
-       - Tabelas comparativas quando aplicável
-       - Destaques com blockquotes para pontos-chave
-       - Seção "⚠️ CAI EM PROVA" para os assuntos mais cobrados
-    4. **EXERCÍCIOS**: Adicione ao final 5 questões objetivas baseadas no conteúdo do vídeo, com gabarito comentado.
-    5. **FORMATO**: Use Markdown rico e profissional. O resultado deve parecer uma apostila de cursinho preparatório de alto nível.
-    6. **NÃO INVENTE**: Baseie-se fielmente na transcrição.
+    1. EXTRAIA TODO O CONTEÚDO: Cubra TODOS os tópicos, conceitos, fórmulas, datas, nomes, leis, exemplos e explicações mencionados no vídeo.
+    2. ORGANIZE EM TÓPICOS: Crie uma estrutura clara com títulos (H1, H2, H3), separando cada assunto abordado.
+    3. ENRIQUEÇA: Adicione detalhes extras como Macetes de memorização ("Bizu"), tabelas comparativas, destaques e seção "CAI EM PROVA".
+    4. EXERCÍCIOS: Adicione ao final 5 questões objetivas baseadas no conteúdo do vídeo, com gabarito comentado.
+    5. FORMATO: Use Markdown rico e profissional.
+    6. NÃO INVENTE: Baseie-se fielmente na transcrição.
     
     TRANSCRIÇÃO DO VÍDEO:
     ---
@@ -1848,41 +1775,33 @@ async function handleExtractYoutubeContent(genAI, modelName, payload) {
     
     Agora gere a apostila completa em Markdown.`;
   } else {
-    // MODO 2: SEM TRANSCRIÇÃO — IA gera material baseado nos metadados coletados do vídeo
     console.log(`[YouTube/Gemini] Gerando apostila baseada nos METADADOS: "${_videoTitle}"`);
     const contextData = payload._fullContext || `TÍTULO: "${_videoTitle}"`;
     prompt = `Você é o BizuBot, um Professor Especialista de Elite.
-    
     O aluno assistiu a uma videoaula do YouTube e precisa de uma apostila sobre o EXATO assunto abordado.
     
     ===== DADOS DO VÍDEO =====
     ${contextData}
     ==========================
     
-    🚨 REGRA CRÍTICA: Gere o material EXCLUSIVAMENTE sobre o assunto indicado no título e descrição do vídeo.
-    Se o título diz "Matemática Básica", a apostila DEVE ser sobre Matemática Básica.
-    Se o título diz "Direito Constitucional", a apostila DEVE ser sobre Direito Constitucional.
-    NÃO invente outro assunto. SIGA O TÍTULO DO VÍDEO.
-    
+    REGRA CRÍTICA: Gere o material EXCLUSIVAMENTE sobre o assunto indicado no título e descrição do vídeo.
     PERFIL: ${isAcademico ? 'ENEM / Vestibular / Acadêmico' : 'Concurso Público'}
     
     DIRETRIZES OBRIGATÓRIAS:
-    1. **ASSUNTO CORRETO**: O tema da apostila DEVE corresponder ao título do vídeo. Não mude de assunto.
-    2. **CUBRA O ASSUNTO COMPLETO**: Teoria aprofundada com exemplos práticos.
-    3. **ORGANIZE EM TÓPICOS**: Estrutura clara com títulos (H1, H2, H3).
-    4. **ENRIQUEÇA**: Macetes ("Bizu"), tabelas comparativas, destaques "⚠️ CAI EM PROVA".
-    5. **EXERCÍCIOS**: 5 questões objetivas com gabarito comentado.
-    6. **FORMATO**: Markdown rico e profissional. Nível de cursinho preparatório.
+    1. ASSUNTO CORRETO: O tema da apostila DEVE corresponder ao título do vídeo.
+    2. CUBRA O ASSUNTO COMPLETO: Teoria aprofundada com exemplos práticos.
+    3. ORGANIZE EM TÓPICOS: Estrutura clara com títulos (H1, H2, H3).
+    4. ENRIQUEÇA: Macetes ("Bizu"), tabelas comparativas, destaques "CAI EM PROVA".
+    5. EXERCÍCIOS: 5 questões objetivas com gabarito comentado.
+    6. FORMATO: Markdown rico e profissional.
     
     Agora gere a apostila completa em Markdown sobre "${_videoTitle}".`;
   }
 
-  const result = await model.generateContent(prompt);
-  const content = result.response.text();
-
+  const result = await callGemini(genAI, modelName, prompt);
   return {
     title: _videoTitle || 'Vídeo sem título',
-    content,
+    content: result.text,
     category: 'YouTube',
     type: 'VIDEO',
     videoId: _videoId,
@@ -1893,52 +1812,33 @@ async function handleExtractYoutubeContent(genAI, modelName, payload) {
 }
 
 async function handleGenerateStudyMaterials(genAI, modelName, { topic, count }) {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: BIZU_SYSTEM_PROMPT,
-    safetySettings: SAFETY_SETTINGS
-  });
-
   const numMaterials = count || 3;
   let allMaterials = [];
 
   for (let i = 0; i < numMaterials; i++) {
-    try {
-      console.log(`[StudyMaterials] Gerando material ${i + 1} de ${numMaterials} para "${topic}"...`);
+    console.log(`[StudyMaterials] Gerando material ${i + 1} de ${numMaterials} para "${topic}"...`);
 
-      const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
-      Responda APENAS JSON: { "title": "...", "intro": "..." }`;
+    const skeletonPrompt = `Você é o BizuBot. Gere o TÍTULO e uma BREVE INTRODUÇÃO para uma apostila de alto nível sobre "${topic}". 
+    Responda APENAS JSON: { "title": "...", "intro": "..." }`;
 
-      const skeletonResult = await model.generateContent(skeletonPrompt);
-      const skeleton = JSON.parse(extractJSON(skeletonResult.response.text()));
+    const skeletonResult = await callGemini(genAI, modelName, skeletonPrompt, true);
+    const skeleton = JSON.parse(extractJSON(skeletonResult.text));
 
-      // Usamos o handleGenerateMaterialContent para gerar o conteúdo completo com chunking e waits
-      const contentResult = await handleGenerateMaterialContent(genAI, modelName, { material: skeleton });
+    const contentResult = await handleGenerateMaterialContent(genAI, modelName, { material: skeleton });
 
-      allMaterials.push({
-        id: Date.now() + i,
-        title: skeleton.title,
-        content: contentResult.content,
-        category: topic,
-        timestamp: new Date()
-      });
-
-    } catch (err) {
-      console.error(`Erro ao gerar material ${i + 1}:`, err.message);
-      if (err.message.includes("429") || err.message.includes("Quota")) {
-        console.warn("Limite atingido. Aguardando 60s...");
-        await sleep(60000);
-        i--; // Tenta o mesmo material novamente
-        continue;
-      }
-      // Se for outro erro, apenas ignora este material e tenta o próximo
-    }
+    allMaterials.push({
+      id: Date.now() + i,
+      title: skeleton.title,
+      content: contentResult.content,
+      category: topic,
+      timestamp: new Date()
+    });
   }
 
   return allMaterials;
 }
 
-// --- ROTAS ---
+// --- ROTAS PRINCIPAIS ---
 
 app.post('/api/gemini', async (req, res) => {
   const { action, payload } = req.body;
@@ -1960,39 +1860,159 @@ app.post('/api/gemini', async (req, res) => {
       return res.status(500).json({ error: "Chave API inválida ou não configurada." });
     }
 
-    // Tratamento genérico para erros de JSON parse (comum em IAs instáveis)
     if (error instanceof SyntaxError) {
       return res.status(500).json({ error: "A IA gerou uma resposta inválida. Tente novamente." });
     }
 
-    // Erros específicos do YouTube — passar a mensagem real pro frontend
     if (error.message.includes('YouTube') || error.message.includes('legendas') || error.message.includes('transcrição') || error.message.includes('vídeo')) {
       return res.status(400).json({ error: error.message });
     }
 
-    // Erros de rate limit
-    if (error.message.includes('429') || error.message.includes('Quota') || error.message.includes('exhausted') || error.message.includes('atingiram o limite')) {
+    if (error.message.includes('429') || error.message.includes('Quota') || error.message.includes('exhausted') || error.message.includes('atingiram o limite') || error.message.includes('RATE_LIMIT')) {
       return res.status(429).json({ error: "Todas as IAs atingiram o limite de uso temporário. Tente novamente em 1-2 minutos." });
     }
 
-    // Erro genérico — mas agora mostra a mensagem REAL
     res.status(503).json({ error: error.message || "Serviço de IA indisponível. Tente novamente em alguns segundos." });
   }
 });
 
+// --- ROTAS DE CONFIGURAÇÃO E TESTE DE IA (PAINEL ADMIN) ---
+
+app.get('/api/admin/ai-config', (req, res) => {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
+
+  const defaultPreferred = geminiKey ? 'gemini' : (mistralKey ? 'mistral' : (groqKey ? 'groq' : 'openrouter'));
+
+  res.json({
+    preferredProvider: runtimePreferredProvider || process.env.AI_PROVIDER?.toLowerCase() || defaultPreferred,
+    providers: {
+      gemini: { configured: !!geminiKey, models: MODEL_FALLBACK_LIST },
+      groq: { configured: !!groqKey, models: GROQ_MODELS },
+      mistral: { configured: !!mistralKey, models: MISTRAL_MODELS },
+      openrouter: { configured: !!openRouterKey, models: OPENROUTER_MODELS }
+    }
+  });
+});
+
+app.post('/api/admin/ai-config', async (req, res) => {
+  const { preferredProvider } = req.body;
+  const validProviders = ['gemini', 'groq', 'mistral', 'openrouter'];
+
+  if (!preferredProvider || !validProviders.includes(preferredProvider.toLowerCase())) {
+    return res.status(400).json({ error: `Provedor inválido. Escolha um entre: ${validProviders.join(', ')}` });
+  }
+
+  runtimePreferredProvider = preferredProvider.toLowerCase();
+  console.log(`[Admin] 🔄 Provedor de IA primário atualizado para: ${runtimePreferredProvider.toUpperCase()}`);
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'ai_preferred_provider',
+          value: runtimePreferredProvider,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+    } catch (err) {
+      console.warn('[Admin] Não foi possível salvar configuração no Supabase (system_settings):', err.message);
+    }
+  }
+
+  res.json({ success: true, preferredProvider: runtimePreferredProvider });
+});
+
+app.post('/api/admin/test-ai', async (req, res) => {
+  const providers = ['gemini', 'groq', 'mistral', 'openrouter'];
+  const testResults = [];
+
+  for (const provider of providers) {
+    const start = Date.now();
+    try {
+      let isConfigured = false;
+      let modelUsed = '';
+
+      if (provider === 'gemini') {
+        const key = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
+        if (!key) {
+          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: MODEL_FALLBACK_LIST[0], error: 'Chave GEMINI_API_KEY não configurada' });
+          continue;
+        }
+        isConfigured = true;
+        modelUsed = MODEL_FALLBACK_LIST[0];
+        const dummyAi = new GoogleGenAI({ apiKey: key });
+        await callGemini(dummyAi, modelUsed, "Responda apenas com a palavra OK.", false);
+      } else if (provider === 'groq') {
+        const key = process.env.GROQ_API_KEY;
+        if (!key) {
+          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: GROQ_MODELS[0], error: 'Chave GROQ_API_KEY não configurada' });
+          continue;
+        }
+        isConfigured = true;
+        modelUsed = GROQ_MODELS[0];
+        await callGroq({ apiKey: key, baseUrl: 'https://api.groq.com/openai/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+      } else if (provider === 'mistral') {
+        const key = process.env.MISTRAL_API_KEY;
+        if (!key) {
+          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: MISTRAL_MODELS[0], error: 'Chave MISTRAL_API_KEY não configurada' });
+          continue;
+        }
+        isConfigured = true;
+        modelUsed = MISTRAL_MODELS[0];
+        await callMistral({ apiKey: key, baseUrl: 'https://api.mistral.ai/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+      } else if (provider === 'openrouter') {
+        const key = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
+        if (!key) {
+          testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: OPENROUTER_MODELS[0], error: 'Chave OPENROUTER_API_KEY / OPENAI_API_KEY não configurada' });
+          continue;
+        }
+        isConfigured = true;
+        modelUsed = OPENROUTER_MODELS[0];
+        await callOpenRouter({ apiKey: key, baseUrl: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1', model: modelUsed }, "Responda apenas com a palavra OK.", false);
+      }
+
+      const latencyMs = Date.now() - start;
+      testResults.push({
+        provider,
+        status: 'online',
+        latencyMs,
+        model: modelUsed,
+        error: null
+      });
+    } catch (err) {
+      const latencyMs = Date.now() - start;
+      const isRateLimit = err.message.includes('429') || err.message.includes('Quota') || err.message.includes('RATE_LIMIT');
+      testResults.push({
+        provider,
+        status: isRateLimit ? 'rate_limited' : 'error',
+        latencyMs,
+        model: '',
+        error: err.message
+      });
+    }
+  }
+
+  res.json({
+    preferredProvider: runtimePreferredProvider || (process.env.GEMINI_API_KEY ? 'gemini' : 'mistral'),
+    results: testResults
+  });
+});
+
 // --- DIAGNÓSTICO E FIX DA TABELA MATERIALS ---
 app.get('/api/fix-materials-table', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase não configurado neste servidor.' });
+  }
   try {
     const results = [];
 
-    // 1. Verificar se a tabela existe
     const { data: tableCheck, error: tableErr } = await supabase.rpc('to_regclass', { name: 'public.materials' }).maybeSingle();
-    
-    // Alternativa: tentar um select básico
     const { data: testSelect, error: selectErr } = await supabase.from('materials').select('id').limit(1);
     
     if (selectErr && selectErr.message.includes('does not exist')) {
-      // Tabela não existe - criar
       results.push('⚠️ Tabela materials NÃO existe! Criando...');
       
       const { error: createErr } = await supabase.rpc('exec_sql', {
@@ -2033,8 +2053,6 @@ app.get('/api/fix-materials-table', async (req, res) => {
       }
     } else if (selectErr) {
       results.push(`⚠️ Erro ao testar tabela: ${selectErr.message} (code: ${selectErr.code})`);
-      
-      // Se o erro for 400, pode ser problema de colunas
       if (selectErr.code === '42P01') {
         results.push('❌ Tabela materials NÃO existe no banco!');
       }
@@ -2042,7 +2060,6 @@ app.get('/api/fix-materials-table', async (req, res) => {
       results.push('✅ Tabela materials existe e está acessível.');
     }
 
-    // 2. Verificar colunas existentes
     const { data: columns, error: colErr } = await supabase
       .from('information_schema.columns')
       .select('column_name, data_type, is_nullable')
@@ -2050,13 +2067,11 @@ app.get('/api/fix-materials-table', async (req, res) => {
       .eq('table_schema', 'public');
     
     if (colErr) {
-      // Alternativa via query direto
       results.push(`⚠️ Não consegui listar colunas via information_schema: ${colErr.message}`);
     } else {
       results.push(`📊 Colunas encontradas: ${JSON.stringify(columns)}`);
     }
 
-    // 3. Tentar um insert/upsert de teste pra ver o erro exato
     const testMaterial = {
       id: 'test_diagnostic_' + Date.now(),
       title: 'Teste Diagnóstico',
@@ -2072,26 +2087,21 @@ app.get('/api/fix-materials-table', async (req, res) => {
     const { error: insertErr } = await supabase.from('materials').insert(testMaterial);
     if (insertErr) {
       results.push(`⚠️ Erro ao inserir material de teste: ${insertErr.message} (code: ${insertErr.code}, details: ${insertErr.details})`);
-      
-      // Se o erro mencionar coluna, a gente sabe qual falta
       if (insertErr.message.includes('column')) {
         results.push(`🔍 Provável coluna faltando! Detalhes: ${insertErr.message}`);
       }
     } else {
       results.push('✅ Insert de teste funcionou!');
-      // Limpar o teste
       await supabase.from('materials').delete().eq('id', testMaterial.id);
       results.push('🧹 Material de teste limpo.');
     }
 
-    // 4. SQL para o usuário executar manualmente se necessário
     const fixSQL = `
 -- ==========================================
 -- SQL PARA CRIAR/CORRIGIR TABELA MATERIALS
 -- Execute no Supabase Dashboard > SQL Editor
 -- ==========================================
 
--- Criar tabela (se não existir)
 CREATE TABLE IF NOT EXISTS public.materials (
   id TEXT PRIMARY KEY,
   title TEXT,
@@ -2105,7 +2115,6 @@ CREATE TABLE IF NOT EXISTS public.materials (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Adicionar colunas faltantes (ignora se já existir)
 DO $$ BEGIN
   ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS title TEXT;
   ALTER TABLE public.materials ADD COLUMN IF NOT EXISTS category TEXT;
@@ -2119,10 +2128,8 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- Habilitar RLS
 ALTER TABLE public.materials ENABLE ROW LEVEL SECURITY;
 
--- Políticas RLS (drop e recria para evitar conflitos)
 DROP POLICY IF EXISTS "Users can view own materials" ON public.materials;
 DROP POLICY IF EXISTS "Users can insert own materials" ON public.materials;
 DROP POLICY IF EXISTS "Users can update own materials" ON public.materials;
@@ -2160,3 +2167,4 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Servidor Universal Bizu rodando na porta ${PORT}`);
 });
+

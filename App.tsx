@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Admin from './pages/Admin';
 import { supabase } from './services/supabaseClient';
 import { ThemeProvider } from './services/ThemeContext';
+import { clearLocalUserData } from './services/db';
 
 import { Zap } from 'lucide-react';
 
@@ -171,6 +172,7 @@ function App() {
           currentEmailRef.current = null;
           currentUserIdRef.current = null;
         }
+        clearLocalUserData();
         setSession(null);
         setHasSubscription(false);
         setIsAdmin(false);

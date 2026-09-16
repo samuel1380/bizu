@@ -4,6 +4,8 @@ import { BookOpen, GraduationCap, LayoutDashboard, MessageSquareText, Menu, X, Z
 import { useTheme } from '../services/ThemeContext';
 import { supabase } from '../services/supabaseClient';
 
+import { clearLocalUserData } from '../services/db';
+
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -25,60 +27,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     let intervalId: NodeJS.Timeout;
     let isActive = true;
 
-    const initLoginSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.email) return;
-
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('login_count, total_time_spent')
-          .eq('email', session.user.email.toLowerCase())
-          .maybeSingle();
-
-        if (profile) {
-          await supabase
-            .from('profiles')
-            .update({
-              last_login: new Date().toISOString(),
-              last_active_at: new Date().toISOString(),
-              login_count: (profile.login_count || 0) + 1
-            })
-            .eq('email', session.user.email.toLowerCase());
-        }
-      } catch (err) {
-        console.error('Erro ao inicializar sessão:', err);
-      }
-    };
-
+    // Apenas atualiza last_active_at para presença em tempo real (sem duplicar login_count ou tempo)
     const updatePresence = async () => {
       if (!isActive) return;
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.email) return;
-
       try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('total_time_spent')
-          .eq('email', session.user.email.toLowerCase())
-          .maybeSingle();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.email) return;
 
-        if (profile) {
-          const currentTotal = profile.total_time_spent || 0;
-          await supabase
-            .from('profiles')
-            .update({
-              last_active_at: new Date().toISOString(),
-              total_time_spent: currentTotal + 60
-            })
-            .eq('email', session.user.email.toLowerCase());
-        }
+        await supabase
+          .from('profiles')
+          .update({
+            last_active_at: new Date().toISOString()
+          })
+          .eq('email', session.user.email.toLowerCase());
       } catch (err) { }
     };
 
-    initLoginSession();
-    intervalId = setInterval(updatePresence, 60000); // 1 minuto de heartbeat
+    updatePresence();
+    intervalId = setInterval(updatePresence, 60000); // 1 minuto de heartbeat para presença
 
     return () => {
       isActive = false;
@@ -89,8 +55,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isActive = (path: string) => location.pathname === path;
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/';
+    try {
+      await clearLocalUserData();
+      await supabase.auth.signOut();
+    } finally {
+      window.location.href = '/#/login';
+    }
   };
 
   return (

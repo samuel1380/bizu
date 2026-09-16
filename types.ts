@@ -53,6 +53,7 @@ export interface RoutineTask {
   subject: string;
   activity: string; // "Ler PDF", "Resolver Questões", "Revisão"
   duration: string; // "1h", "30min"
+  completed?: boolean;
 }
 
 export interface DailySchedule {
@@ -69,3 +70,19 @@ export interface StudyRoutine {
   createdAt: Date;
   studyType?: 'concurso' | 'academico';
 }
+
+export interface AIProviderStatus {
+  id: 'gemini' | 'groq' | 'mistral' | 'openrouter';
+  name: string;
+  configured: boolean;
+  status: 'online' | 'rate_limited' | 'error' | 'missing_key';
+  latencyMs: number | null;
+  model: string | null;
+  error: string | null;
+}
+
+export interface AIConfig {
+  preferredProvider: 'gemini' | 'groq' | 'mistral' | 'openrouter';
+  fallbackOrder: string[];
+}
+
