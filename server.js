@@ -100,9 +100,13 @@ const GROQ_MODELS = [
 ];
 
 const MISTRAL_MODELS = [
-  "mistral-large-2411",
+  "mistral-large-latest",
+  "mistral-medium-latest",
+  "mistral-small-latest",
+  "ministral-8b-latest",
+  "codestral-latest",
   "open-mistral-nemo",
-  "pixtral-12b-2409"
+  "mistral-large-2411"
 ];
 
 const OPENROUTER_MODELS = [
@@ -111,9 +115,10 @@ const OPENROUTER_MODELS = [
   "deepseek/deepseek-chat"
 ];
 
-// Estado da IA Primária, Modelo Groq e Chaves salvas em tempo de execução
+// Estado da IA Primária, Modelos Preferenciais e Chaves salvas em tempo de execução
 let runtimePreferredProvider = null;
 let runtimePreferredGroqModel = null;
+let runtimePreferredMistralModel = null;
 const runtimeApiKeys = {
   gemini: '',
   groq: '',
@@ -131,6 +136,7 @@ const runtimeApiKeys = {
       .in('key', [
         'ai_preferred_provider',
         'ai_groq_preferred_model',
+        'ai_mistral_preferred_model',
         'ai_gemini_key',
         'ai_groq_key',
         'ai_mistral_key',
@@ -146,6 +152,9 @@ const runtimeApiKeys = {
         } else if (item.key === 'ai_groq_preferred_model') {
           runtimePreferredGroqModel = item.value;
           console.log(`[Boot] ⚡ Modelo Groq primário carregado do Supabase: ${runtimePreferredGroqModel}`);
+        } else if (item.key === 'ai_mistral_preferred_model') {
+          runtimePreferredMistralModel = item.value;
+          console.log(`[Boot] 🌪️ Modelo Mistral primário carregado do Supabase: ${runtimePreferredMistralModel}`);
         } else if (item.key === 'ai_gemini_key') {
           runtimeApiKeys.gemini = item.value;
         } else if (item.key === 'ai_groq_key') {
@@ -742,6 +751,7 @@ function getAIKeys() {
     process.env.MISTRAL_KEY ||
     process.env.MISTRAL_APIKEY ||
     process.env.VITE_MISTRAL_API_KEY ||
+    process.env.MISTRAL ||
     ''
   ).trim().replace(/^["']|["']$/g, '');
 
@@ -768,6 +778,7 @@ function getAI() {
 
   const defaultPreferred = groqKey ? 'groq' : (geminiKey ? 'gemini' : (mistralKey ? 'mistral' : 'openrouter'));
   const activeGroqModel = runtimePreferredGroqModel || GROQ_MODELS[0];
+  const activeMistralModel = runtimePreferredMistralModel || MISTRAL_MODELS[0];
 
   return {
     gemini: geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null,
@@ -784,7 +795,7 @@ function getAI() {
     mistral: mistralKey ? {
       apiKey: mistralKey,
       baseUrl: 'https://api.mistral.ai/v1',
-      model: 'mistral-large-2411'
+      model: activeMistralModel
     } : null,
     preferredProvider: runtimePreferredProvider || process.env.AI_PROVIDER?.toLowerCase() || defaultPreferred
   };
@@ -867,8 +878,9 @@ async function callGroq(config, prompt, isJson = false, history = null, specific
 
 // --- CHAMADA MISTRAL ---
 async function callMistral(config, prompt, isJson = false, history = null, specificModel = null) {
+  const cleanKey = config.apiKey ? config.apiKey.trim().replace(/^["']|["']$/g, '') : '';
   const headers = {
-    "Authorization": `Bearer ${config.apiKey.trim()}`,
+    "Authorization": `Bearer ${cleanKey}`,
     "Content-Type": "application/json"
   };
 
@@ -877,22 +889,43 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
     messages.push({ role: "user", content: prompt });
   }
 
+  let systemPrompt = BIZU_SYSTEM_PROMPT;
+  if (isJson) {
+    systemPrompt += "\nIMPORTANTE: Responda SEMPRE em formato JSON estritamente válido.";
+  }
+
+  const model = specificModel || config.model || MISTRAL_MODELS[0];
+
   const body = {
-    model: specificModel || config.model,
+    model: model,
     messages: [
-      { role: "system", content: BIZU_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...messages
     ],
-    response_format: isJson ? { type: "json_object" } : undefined,
     temperature: 0.7,
     max_tokens: 4000
   };
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  if (isJson) {
+    body.response_format = { type: "json_object" };
+  }
+
+  let response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers,
     body: JSON.stringify(body)
   });
+
+  // Se o modelo rejeitar response_format (HTTP 400), tenta sem o response_format
+  if (response.status === 400 && isJson && body.response_format) {
+    console.warn(`[Mistral] Modelo ${model} rejeitou response_format json_object (HTTP 400). Tentando novamente sem response_format...`);
+    delete body.response_format;
+    response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+  }
 
   const rawText = await response.text();
 
@@ -900,7 +933,7 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
     let errorMsg = rawText;
     try {
       const errorData = JSON.parse(rawText || "{}");
-      errorMsg = errorData.error?.message || rawText;
+      errorMsg = errorData.message || errorData.error?.message || rawText;
     } catch (e) { }
 
     if (response.status === 429) throw new Error(`RATE_LIMIT:${errorMsg}`);
@@ -908,7 +941,7 @@ async function callMistral(config, prompt, isJson = false, history = null, speci
   }
 
   const data = JSON.parse(rawText);
-  return { text: data.choices[0].message.content || "" };
+  return { text: data.choices[0]?.message?.content || "" };
 }
 
 // --- CHAMADA OPENROUTER (FALLBACK) ---
@@ -1117,7 +1150,11 @@ async function runWithModelFallback(ai, actionName, payload) {
 
       // --- TENTANDO MISTRAL ---
       if (provider === 'mistral' && ai.mistral) {
-        for (const model of MISTRAL_MODELS) {
+        const mistralModelsToTry = runtimePreferredMistralModel
+          ? [runtimePreferredMistralModel, ...MISTRAL_MODELS.filter(m => m !== runtimePreferredMistralModel)]
+          : MISTRAL_MODELS;
+
+        for (const model of mistralModelsToTry) {
           try {
             console.log(`[Mistral] Tentando ${actionName} com ${model}`);
 
@@ -2002,6 +2039,7 @@ app.get('/api/admin/ai-config', (req, res) => {
   res.json({
     preferredProvider: runtimePreferredProvider || process.env.AI_PROVIDER?.toLowerCase() || defaultPreferred,
     preferredGroqModel: runtimePreferredGroqModel || GROQ_MODELS[0],
+    preferredMistralModel: runtimePreferredMistralModel || MISTRAL_MODELS[0],
     providers: {
       gemini: {
         configured: !!geminiKey,
@@ -2028,7 +2066,7 @@ app.get('/api/admin/ai-config', (req, res) => {
 });
 
 app.post('/api/admin/ai-config', async (req, res) => {
-  const { preferredProvider, preferredGroqModel, keys } = req.body;
+  const { preferredProvider, preferredGroqModel, preferredMistralModel, keys } = req.body;
   const validProviders = ['gemini', 'groq', 'mistral', 'openrouter'];
 
   if (preferredProvider && validProviders.includes(preferredProvider.toLowerCase())) {
@@ -2067,6 +2105,23 @@ app.post('/api/admin/ai-config', async (req, res) => {
     }
   }
 
+  if (preferredMistralModel && MISTRAL_MODELS.includes(preferredMistralModel)) {
+    runtimePreferredMistralModel = preferredMistralModel;
+    console.log(`[Admin] 🌪️ Modelo Mistral primário atualizado para: ${runtimePreferredMistralModel}`);
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('system_settings')
+          .upsert({
+            key: 'ai_mistral_preferred_model',
+            value: runtimePreferredMistralModel,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
+      } catch (err) { }
+    }
+  }
+
   if (keys && typeof keys === 'object') {
     const keyMapping = {
       gemini: 'ai_gemini_key',
@@ -2099,7 +2154,8 @@ app.post('/api/admin/ai-config', async (req, res) => {
   res.json({
     success: true,
     preferredProvider: runtimePreferredProvider,
-    preferredGroqModel: runtimePreferredGroqModel
+    preferredGroqModel: runtimePreferredGroqModel,
+    preferredMistralModel: runtimePreferredMistralModel
   });
 });
 
@@ -2180,22 +2236,53 @@ app.post('/api/admin/test-ai', async (req, res) => {
           testResults.push({ provider, status: 'unconfigured', latencyMs: 0, model: MISTRAL_MODELS[0], error: 'Chave MISTRAL_API_KEY não configurada' });
           continue;
         }
-        modelUsed = MISTRAL_MODELS[0];
-        const pingRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${mistralKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: modelUsed,
-            messages: [{ role: 'user', content: 'Ping. Responda apenas OK.' }],
-            max_tokens: 10
-          })
-        });
-        if (!pingRes.ok) {
-          const errData = await pingRes.json().catch(() => ({}));
-          throw new Error(errData.message || errData.error?.message || `HTTP ${pingRes.status}`);
+
+        const modelsToTest = runtimePreferredMistralModel
+          ? [runtimePreferredMistralModel, ...MISTRAL_MODELS.filter(m => m !== runtimePreferredMistralModel)]
+          : MISTRAL_MODELS;
+
+        let mistralSuccess = false;
+        let lastMistralError = null;
+
+        for (const testModel of modelsToTest) {
+          try {
+            modelUsed = testModel;
+            const pingRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${mistralKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: testModel,
+                messages: [{ role: 'user', content: 'Ping. Responda apenas OK.' }],
+                max_tokens: 10,
+                temperature: 0.1
+              })
+            });
+
+            if (!pingRes.ok) {
+              const pingErr = await pingRes.json().catch(() => ({}));
+              const errMsg = pingErr.message || pingErr.error?.message || `HTTP ${pingRes.status}`;
+              const err = new Error(errMsg);
+              if (pingRes.status === 401 || errMsg.toLowerCase().includes('invalid api key') || errMsg.toLowerCase().includes('unauthorized')) {
+                err.isAuthError = true;
+              }
+              throw err;
+            }
+
+            mistralSuccess = true;
+            break;
+          } catch (mErr) {
+            lastMistralError = mErr;
+            if (mErr.isAuthError) {
+              break; // Não tenta os outros modelos se a chave for inválida (falha rápida)
+            }
+          }
+        }
+
+        if (!mistralSuccess) {
+          throw lastMistralError || new Error('Nenhum modelo Mistral respondeu com sucesso.');
         }
       } else if (provider === 'openrouter') {
         if (!openRouterKey) {

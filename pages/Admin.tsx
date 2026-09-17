@@ -85,6 +85,7 @@ export default function Admin() {
   const [aiConfig, setAiConfig] = useState<AIConfigResponse | null>(null);
   const [selectedPrimaryAi, setSelectedPrimaryAi] = useState<string>('groq');
   const [selectedGroqModel, setSelectedGroqModel] = useState<string>('openai/gpt-oss-120b');
+  const [selectedMistralModel, setSelectedMistralModel] = useState<string>('mistral-large-latest');
   const [apiKeysInput, setApiKeysInput] = useState<{ [key: string]: string }>({
     groq: '',
     gemini: '',
@@ -123,6 +124,9 @@ export default function Admin() {
       if (cfg?.preferredGroqModel) {
         setSelectedGroqModel(cfg.preferredGroqModel);
       }
+      if (cfg?.preferredMistralModel) {
+        setSelectedMistralModel(cfg.preferredMistralModel);
+      }
     } catch (e) {
       console.warn('Erro ao carregar configurações de IA:', e);
     }
@@ -139,7 +143,8 @@ export default function Admin() {
       await saveAiConfig(
         selectedPrimaryAi,
         selectedGroqModel,
-        Object.keys(keysToSave).length > 0 ? keysToSave : undefined
+        Object.keys(keysToSave).length > 0 ? keysToSave : undefined,
+        selectedMistralModel
       );
 
       setApiKeysInput({ groq: '', gemini: '', mistral: '', openrouter: '' });
@@ -799,9 +804,9 @@ export default function Admin() {
                   </p>
                 </div>
                 <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Modelos Ativos:</span>
-                  <p className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 truncate">
-                    mistral-large-2411, nemo
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Modelo Primário:</span>
+                  <p className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 truncate">
+                    {selectedMistralModel}
                   </p>
                 </div>
               </div>
@@ -841,7 +846,7 @@ export default function Admin() {
             </div>
 
             {/* SELEÇÃO DO MODELO ESPECÍFICO DA GROQ */}
-            <div className="p-5 bg-orange-50/70 dark:bg-orange-950/20 border-2 border-orange-200 dark:border-orange-800/40 rounded-2xl mb-6">
+            <div className="p-5 bg-orange-50/70 dark:bg-orange-950/20 border-2 border-orange-200 dark:border-orange-800/40 rounded-2xl mb-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-black text-sm">
@@ -889,6 +894,62 @@ export default function Admin() {
                       </span>
                     </div>
                     <p className={`text-[10px] leading-tight ${selectedGroqModel === m.id ? 'text-orange-100' : 'text-slate-400 dark:text-slate-400'}`}>
+                      {m.desc}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* SELEÇÃO DO MODELO ESPECÍFICO DA MISTRAL AI */}
+            <div className="p-5 bg-amber-50/70 dark:bg-amber-950/20 border-2 border-amber-200 dark:border-amber-800/40 rounded-2xl mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-black text-sm">
+                    🌪️
+                  </span>
+                  <div>
+                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-base">
+                      Modelo Preferencial da Mistral AI
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                      Selecione qual modelo da Mistral AI será chamado primeiro ao acionar a Mistral:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/50 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700">
+                  Ativo: <span className="font-mono font-black">{selectedMistralModel}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {[
+                  { id: 'mistral-large-latest', label: 'Mistral Large 3', desc: 'Flagship multimodal & multilíngue de máxima precisão', badge: 'Flagship' },
+                  { id: 'mistral-medium-latest', label: 'Mistral Medium 3.5', desc: 'Raciocínio longo, ferramentas síncronas e agentes', badge: 'Agêntico' },
+                  { id: 'mistral-small-latest', label: 'Mistral Small 4', desc: 'Multimodal, leve e ultra-rápido (Apache 2.0)', badge: 'Veloz' },
+                  { id: 'ministral-8b-latest', label: 'Ministral 3 (8B)', desc: 'Frontier compacto de ponta otimizado para borda', badge: 'Borda' },
+                  { id: 'codestral-latest', label: 'Codestral', desc: 'Especialista em geração de código e lógica computacional', badge: 'Código' },
+                  { id: 'open-mistral-nemo', label: 'Mistral NeMo', desc: 'Modelo compacto e eficiente treinado com a NVIDIA', badge: 'NeMo' },
+                  { id: 'mistral-large-2411', label: 'Mistral Large 2411', desc: 'Versão corporativa com ampla janela de contexto', badge: 'Estável' }
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedMistralModel(m.id)}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      selectedMistralModel === m.id
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm font-bold'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="font-mono text-xs font-black truncate">{m.label}</span>
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${selectedMistralModel === m.id ? 'bg-amber-700 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                        {m.badge}
+                      </span>
+                    </div>
+                    <p className={`text-[10px] leading-tight ${selectedMistralModel === m.id ? 'text-amber-100' : 'text-slate-400 dark:text-slate-400'}`}>
                       {m.desc}
                     </p>
                   </button>

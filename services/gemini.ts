@@ -118,6 +118,7 @@ export const updateContestRadar = async (existingTitles: string[] = [], studyTyp
 export interface AIConfigResponse {
   preferredProvider: string;
   preferredGroqModel?: string;
+  preferredMistralModel?: string;
   providers: {
     [key: string]: {
       configured: boolean;
@@ -151,12 +152,13 @@ export const getAiConfig = async (): Promise<AIConfigResponse> => {
 export const saveAiConfig = async (
   preferredProvider: string,
   preferredGroqModel?: string,
-  keys?: { [key: string]: string }
-): Promise<{ success: boolean; preferredProvider: string; preferredGroqModel?: string }> => {
+  keys?: { [key: string]: string },
+  preferredMistralModel?: string
+): Promise<{ success: boolean; preferredProvider: string; preferredGroqModel?: string; preferredMistralModel?: string }> => {
   const response = await fetch('/api/admin/ai-config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ preferredProvider, preferredGroqModel, keys }),
+    body: JSON.stringify({ preferredProvider, preferredGroqModel, preferredMistralModel, keys }),
   });
   const data = await response.json();
   if (!response.ok) {
