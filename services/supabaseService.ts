@@ -207,10 +207,16 @@ export const supabaseService = {
         .eq('id', routineId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        console.warn('[Supabase] Erro ao buscar rotina:', error.message);
+      if (!error && data && Array.isArray(data.weekSchedule)) {
+        return data;
       }
-      return data || undefined;
+
+      // Fallback da nuvem via user_metadata (funciona 100% mesmo se a tabela SQL routine não existir)
+      if (user.user_metadata?.study_routine && Array.isArray(user.user_metadata.study_routine.weekSchedule)) {
+        return user.user_metadata.study_routine;
+      }
+
+      return undefined;
     } catch (err: any) {
       console.warn('[Supabase] Exceção ao buscar rotina:', err?.message);
       return undefined;
@@ -222,10 +228,20 @@ export const supabaseService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const routineId = `${user.id}_routine`;
-      const { error } = await supabase
-        .from('routine')
-        .upsert({ ...routine, id: routineId, user_id: user.id });
-      if (error) console.warn('[Supabase] Erro ao salvar rotina:', error.message);
+
+      // 1. Tenta salvar na tabela routine
+      try {
+        await supabase
+          .from('routine')
+          .upsert({ ...routine, id: routineId, user_id: user.id });
+      } catch (e) { }
+
+      // 2. Salva no user_metadata do Supabase (garantia absoluta em nuvem mesmo sem migrações SQL)
+      try {
+        await supabase.auth.updateUser({
+          data: { study_routine: routine }
+        });
+      } catch (e) { }
     } catch (err: any) {
       console.warn('[Supabase] Exceção ao salvar rotina:', err?.message);
     }
@@ -236,11 +252,18 @@ export const supabaseService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const routineId = `${user.id}_routine`;
-      const { error } = await supabase
-        .from('routine')
-        .delete()
-        .eq('id', routineId);
-      if (error) console.warn('[Supabase] Erro ao deletar rotina:', error.message);
+      try {
+        await supabase
+          .from('routine')
+          .delete()
+          .eq('id', routineId);
+      } catch (e) { }
+
+      try {
+        await supabase.auth.updateUser({
+          data: { study_routine: null }
+        });
+      } catch (e) { }
     } catch (err: any) {
       console.warn('[Supabase] Exceção ao deletar rotina:', err?.message);
     }

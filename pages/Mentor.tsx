@@ -26,7 +26,7 @@ const Mentor: React.FC = () => {
             const welcomeMsg: ChatMessage = {
                 id: 'welcome',
                 role: 'model',
-                text: 'Oi! Eu sou o **BizuBot**. \n\nEstou aqui para tirar dúvidas, criar resumos ou te testar. O que vamos estudar agora?',
+                text: 'Oi! Eu sou o **BizuBot**, seu mentor de estudos no Bizu App! 🎯\n\nEstou aqui para tirar dúvidas de matérias, criar resumos, te orientar sobre **o que colocar em Treinar** (quizzes e simulados), planejar sua **Rotina** ou sugerir temas para **Apostilas**.\n\nO que vamos estudar ou treinar agora?',
                 timestamp: new Date()
             };
             setMessages([welcomeMsg]);
